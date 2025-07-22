@@ -44,8 +44,15 @@ function App() {
           
           const response = await fetch('/api/upload-semrush', {
             method: 'POST',
-            body: formData
+            body: formData,
+            headers: {
+              'Accept': 'application/json'
+            }
           });
+          
+          if (!response.ok) {
+            throw new Error(`Upload failed: ${response.status}`);
+          }
           
           return response.json();
         })
@@ -61,8 +68,15 @@ function App() {
           
           const response = await fetch('/api/upload-semrush', {
             method: 'POST',
-            body: formData
+            body: formData,
+            headers: {
+              'Accept': 'application/json'
+            }
           });
+          
+          if (!response.ok) {
+            throw new Error(`Upload failed: ${response.status}`);
+          }
           
           return response.json();
         })
@@ -79,7 +93,8 @@ function App() {
       setAnalysisResults(results);
 
     } catch (error) {
-      setError('Analysis failed: ' + error.message);
+      console.error('Analysis error:', error);
+      setError('Analysis failed: ' + error.message + '. Check the console for details.');
     } finally {
       setLoading(false);
     }
