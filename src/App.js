@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, FileText, AlertCircle, Database, Eye } from 'lucide-react';
+import { Upload, AlertCircle, Database, Eye } from 'lucide-react';
 import './App.css';
 
 function App() {
