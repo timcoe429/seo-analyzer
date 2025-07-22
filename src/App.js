@@ -6,6 +6,7 @@ function App() {
   // Project state
   const [projects, setProjects] = useState([]);
   const [currentProject, setCurrentProject] = useState(null);
+  const [projectData, setProjectData] = useState(null);
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   
@@ -50,6 +51,28 @@ function App() {
     };
     
     fetchProjects();
+  }, [currentProject]);
+
+  // Load project data when project changes
+  useEffect(() => {
+    const loadProjectData = async () => {
+      if (!currentProject) {
+        setProjectData(null);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/projects/${currentProject.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setProjectData(data);
+        }
+      } catch (error) {
+        console.error('Failed to load project data:', error);
+      }
+    };
+
+    loadProjectData();
   }, [currentProject]);
 
 
@@ -199,6 +222,19 @@ function App() {
     setSelectedFiles([]);
     setUploadProgress({});
     setUploadLoading(false);
+    
+    // Refresh project data to show uploaded files
+    if (currentProject) {
+      try {
+        const response = await fetch(`/api/projects/${currentProject.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setProjectData(data);
+        }
+      } catch (error) {
+        console.error('Failed to refresh project data:', error);
+      }
+    }
   };
 
   const analyzeURL = async () => {
@@ -552,24 +588,113 @@ function App() {
            {/* Tab Content - SEMRush */}
            {activeTab === 'semrush' && (
              <div className="bg-white border border-gray-200 rounded-lg p-6">
-               <h3 className="text-lg font-semibold text-gray-900 mb-4">SEMRush Integration</h3>
-               {currentProject ? (
+               <div className="flex justify-between items-center mb-6">
+                 <h3 className="text-lg font-semibold text-gray-900">SEMRush Data</h3>
+                 {currentProject && (
+                   <button
+                     onClick={() => setShowUploadModal(true)}
+                     className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2"
+                   >
+                     <Upload className="w-4 h-4" />
+                     Upload Files
+                   </button>
+                 )}
+               </div>
+
+               {!currentProject ? (
+                 <p className="text-gray-600 text-center py-8">
+                   Please select a project to manage SEMRush data
+                 </p>
+               ) : !projectData?.reports || projectData.reports.length === 0 ? (
                  <div className="text-center py-8">
                    <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                    <p className="text-gray-600 mb-4">
-                     Upload your SEMRush reports to enhance analysis with competitive intelligence
+                     No SEMRush reports uploaded yet
+                   </p>
+                   <p className="text-sm text-gray-500 mb-4">
+                     Upload your SEMRush CSV and PDF files to enhance your SEO analysis
                    </p>
                    <button
                      onClick={() => setShowUploadModal(true)}
                      className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700"
                    >
-                     Upload SEMRush File
+                     Upload First Report
                    </button>
                  </div>
                ) : (
-                 <p className="text-gray-600 text-center py-8">
-                   Please select a project to manage SEMRush data
-                 </p>
+                 <div className="space-y-6">
+                   {/* Uploaded Files Summary */}
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                       <div className="text-2xl font-bold text-blue-900">
+                         {projectData.reports.length}
+                       </div>
+                       <div className="text-sm text-blue-700">Total Reports</div>
+                     </div>
+                     <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                       <div className="text-2xl font-bold text-green-900">
+                         {projectData.reports.filter(r => !r.is_competitor).length}
+                       </div>
+                       <div className="text-sm text-green-700">Main Domain</div>
+                     </div>
+                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                       <div className="text-2xl font-bold text-orange-900">
+                         {projectData.reports.filter(r => r.is_competitor).length}
+                       </div>
+                       <div className="text-sm text-orange-700">Competitor Data</div>
+                     </div>
+                   </div>
+
+                   {/* Files List */}
+                   <div>
+                     <h4 className="font-medium text-gray-900 mb-3">Uploaded Reports</h4>
+                     <div className="space-y-2">
+                       {projectData.reports.map((report, index) => (
+                         <div key={index} className="flex items-center justify-between p-3 border border-gray-200 rounded-md bg-gray-50">
+                           <div className="flex-1">
+                             <div className="font-medium text-sm">{report.filename}</div>
+                             <div className="text-xs text-gray-600">
+                               {report.report_type.replace('_', ' ')} • 
+                               {report.is_competitor ? ' Competitor' : ' Main Domain'} • 
+                               {new Date(report.created_at).toLocaleDateString()}
+                             </div>
+                           </div>
+                           <div className="text-xs text-gray-500">
+                             {report.filename.toLowerCase().endsWith('.pdf') ? 'PDF' : 'CSV'}
+                           </div>
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+
+                   {/* Data Preview */}
+                   {projectData.reports.some(r => r.file_data && Array.isArray(JSON.parse(r.file_data))) && (
+                     <div>
+                       <h4 className="font-medium text-gray-900 mb-3">Data Preview</h4>
+                       <div className="bg-gray-50 border rounded-md p-4 max-h-60 overflow-y-auto">
+                         {projectData.reports
+                           .filter(r => r.file_data && Array.isArray(JSON.parse(r.file_data)))
+                           .slice(0, 1)
+                           .map((report, index) => {
+                             const data = JSON.parse(report.file_data);
+                             return (
+                               <div key={index}>
+                                 <div className="text-sm font-medium mb-2">{report.filename} ({data.length} rows)</div>
+                                 {data.length > 0 && (
+                                   <div className="text-xs">
+                                     <div className="font-medium mb-1">Columns:</div>
+                                     <div className="text-gray-600">
+                                       {Object.keys(data[0]).join(', ')}
+                                     </div>
+                                   </div>
+                                 )}
+                               </div>
+                             );
+                           })}
+                       </div>
+                     </div>
+                   )}
+                 </div>
                )}
              </div>
            )}
