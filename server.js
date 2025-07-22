@@ -85,6 +85,95 @@ function calculateReadabilityScore(text) {
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
+// Function to analyze image optimization for Core Web Vitals
+function analyzeImageOptimization($) {
+  const images = $('img');
+  const analysis = {
+    total: images.length,
+    withDimensions: 0,
+    withLazyLoading: 0,
+    modernFormats: 0,
+    missingAlt: 0,
+    oversized: 0
+  };
+  
+  images.each((i, img) => {
+    const $img = $(img);
+    
+    // Check dimensions (prevents layout shift)
+    if ($img.attr('width') && $img.attr('height')) {
+      analysis.withDimensions++;
+    }
+    
+    // Check lazy loading
+    if ($img.attr('loading') === 'lazy') {
+      analysis.withLazyLoading++;
+    }
+    
+    // Check for modern formats in src or srcset
+    const src = $img.attr('src') || '';
+    const srcset = $img.attr('srcset') || '';
+    if (src.includes('.webp') || src.includes('.avif') || srcset.includes('.webp') || srcset.includes('.avif')) {
+      analysis.modernFormats++;
+    }
+    
+    // Check alt text
+    if (!$img.attr('alt')) {
+      analysis.missingAlt++;
+    }
+  });
+  
+  return analysis;
+}
+
+// Function to check responsive design indicators
+function checkResponsiveDesign($) {
+  const indicators = {
+    hasViewport: $('meta[name="viewport"]').length > 0,
+    hasMediaQueries: $('style').text().includes('@media') || $('link[rel="stylesheet"]').length > 0,
+    hasResponsiveImages: $('img[srcset]').length > 0 || $('picture').length > 0,
+    hasFlexbox: $('style').text().includes('flex') || $('[style*="flex"]').length > 0,
+    hasGrid: $('style').text().includes('grid') || $('[style*="grid"]').length > 0
+  };
+  
+  // Calculate responsive score
+  const totalChecks = Object.keys(indicators).length;
+  const passedChecks = Object.values(indicators).filter(Boolean).length;
+  
+  return {
+    ...indicators,
+    score: Math.round((passedChecks / totalChecks) * 100)
+  };
+}
+
+// Function to calculate estimated Core Web Vitals score
+function calculateCWVScore(performance) {
+  let score = 50; // Base score
+  
+  // HTTPS bonus (confirmed ranking factor)
+  if (performance.isHTTPS) score += 15;
+  
+  // Mobile optimization bonus (confirmed ranking factor)
+  if (performance.hasViewport) score += 10;
+  score += (performance.isResponsive.score / 100) * 10;
+  
+  // Image optimization for CLS and LCP
+  if (performance.imageOptimization.total > 0) {
+    const imgOpt = performance.imageOptimization;
+    const dimensionScore = (imgOpt.withDimensions / imgOpt.total) * 10;
+    const lazyScore = performance.hasLazyLoading ? 5 : 0;
+    const modernFormatScore = (imgOpt.modernFormats / imgOpt.total) * 5;
+    
+    score += dimensionScore + lazyScore + modernFormatScore;
+  }
+  
+  // Resource optimization for FID
+  if (performance.resourceHints.preload > 0) score += 3;
+  if (performance.renderBlockingResources === 0) score += 5;
+  
+  return Math.min(100, Math.round(score));
+}
+
 // Function to perform comprehensive SEO analysis
 function performSEOAnalysis($, url, targetKeyword, isPillarPost = false) {
   // Comprehensive SEO Analysis
@@ -158,12 +247,29 @@ function performSEOAnalysis($, url, targetKeyword, isPillarPost = false) {
       }
     },
     
-    // Performance indicators
+    // Performance indicators & Core Web Vitals factors
     performance: {
       totalElements: $('*').length,
       totalScripts: $('script').length,
       totalStylesheets: $('link[rel="stylesheet"]').length,
-      inlineStyles: $('[style]').length
+      inlineStyles: $('[style]').length,
+      // Core Web Vitals indicators
+      hasLazyLoading: $('img[loading="lazy"]').length > 0,
+      imageOptimization: analyzeImageOptimization($),
+      resourceHints: {
+        preload: $('link[rel="preload"]').length,
+        prefetch: $('link[rel="prefetch"]').length,
+        dns_prefetch: $('link[rel="dns-prefetch"]').length
+      },
+      // Mobile optimization
+      hasViewport: $('meta[name="viewport"]').length > 0,
+      isResponsive: checkResponsiveDesign($),
+      // Security (ranking factor)
+      isHTTPS: url.startsWith('https://'),
+      // Content optimization for Core Web Vitals
+      largeImages: $('img').filter((i, el) => !$(el).attr('width') && !$(el).attr('height')).length,
+      unoptimizedCSS: $('style').length + $('link[rel="stylesheet"]').length,
+      renderBlockingResources: $('script:not([async]):not([defer])').length
     },
     
     // Pillar post specific
@@ -411,15 +517,60 @@ function performSEOAnalysis($, url, targetKeyword, isPillarPost = false) {
     recommendations.push({ priority: 'low', action: 'Consider adding BreadcrumbList schema for navigation' });
   }
 
-  // === PERFORMANCE INDICATORS ===
-  if (analysis.performance.totalScripts > 10) {
-    issues.push({ type: 'warning', category: 'Performance', message: `High number of scripts (${analysis.performance.totalScripts})` });
-    recommendations.push({ priority: 'low', action: 'Consider combining or reducing JavaScript files' });
+  // === CORE WEB VITALS & CONFIRMED RANKING FACTORS ===
+  
+  // HTTPS Security (confirmed ranking factor)
+  if (!analysis.performance.isHTTPS) {
+    issues.push({ type: 'error', category: 'Security', message: 'Site is not using HTTPS' });
+    recommendations.push({ priority: 'critical', action: 'Implement HTTPS - this is a confirmed Google ranking factor' });
+  } else {
+    issues.push({ type: 'success', category: 'Security', message: 'Site is using HTTPS' });
   }
-
-  if (analysis.performance.inlineStyles > 20) {
-    issues.push({ type: 'warning', category: 'Performance', message: `Many inline styles detected (${analysis.performance.inlineStyles})` });
-    recommendations.push({ priority: 'low', action: 'Move inline styles to CSS files for better caching' });
+  
+  // Mobile Optimization (confirmed ranking factor)
+  if (!analysis.performance.hasViewport) {
+    issues.push({ type: 'error', category: 'Mobile', message: 'Missing viewport meta tag' });
+    recommendations.push({ priority: 'critical', action: 'Add viewport meta tag for mobile-first indexing' });
+  }
+  
+  if (analysis.performance.isResponsive.score < 60) {
+    issues.push({ type: 'warning', category: 'Mobile', message: `Poor responsive design score (${analysis.performance.isResponsive.score}%)` });
+    recommendations.push({ priority: 'high', action: 'Improve responsive design - mobile-friendliness is a ranking factor' });
+  }
+  
+  // Core Web Vitals Optimization
+  if (analysis.performance.largeImages > 0) {
+    issues.push({ type: 'warning', category: 'Core Web Vitals', message: `${analysis.performance.largeImages} images without dimensions (causes layout shift)` });
+    recommendations.push({ priority: 'high', action: 'Add width/height attributes to images to prevent Cumulative Layout Shift' });
+  }
+  
+  if (!analysis.performance.hasLazyLoading && analysis.images.total > 3) {
+    issues.push({ type: 'warning', category: 'Core Web Vitals', message: 'No lazy loading detected on images' });
+    recommendations.push({ priority: 'high', action: 'Implement lazy loading to improve Largest Contentful Paint (LCP)' });
+  }
+  
+  if (analysis.performance.renderBlockingResources > 0) {
+    issues.push({ type: 'warning', category: 'Core Web Vitals', message: `${analysis.performance.renderBlockingResources} render-blocking scripts detected` });
+    recommendations.push({ priority: 'high', action: 'Add async/defer to scripts to improve First Input Delay (FID)' });
+  }
+  
+  // Image Optimization for Performance
+  const imgOpt = analysis.performance.imageOptimization;
+  if (imgOpt.total > 0) {
+    if (imgOpt.modernFormats / imgOpt.total < 0.5) {
+      issues.push({ type: 'warning', category: 'Core Web Vitals', message: `Only ${imgOpt.modernFormats}/${imgOpt.total} images use modern formats` });
+      recommendations.push({ priority: 'medium', action: 'Convert images to WebP/AVIF for faster loading (improves LCP)' });
+    }
+    
+    if (imgOpt.withDimensions / imgOpt.total < 0.8) {
+      issues.push({ type: 'warning', category: 'Core Web Vitals', message: `${imgOpt.total - imgOpt.withDimensions} images missing dimensions` });
+      recommendations.push({ priority: 'high', action: 'Add width/height to images to prevent layout shift (CLS)' });
+    }
+  }
+  
+  // Resource Hints for Performance
+  if (analysis.performance.resourceHints.preload === 0 && analysis.performance.totalStylesheets > 2) {
+    recommendations.push({ priority: 'medium', action: 'Add preload hints for critical CSS to improve LCP' });
   }
 
   // === PILLAR POST SPECIFIC ANALYSIS ===
@@ -587,33 +738,92 @@ function generateComparison(yourAnalysis, competitorAnalysis, targetKeyword, isP
     });
   }
 
-  // Detailed heading structure comparison
-  const competitorTotalHeadings = Object.values(competitorAnalysis.headings).reduce((sum, h) => sum + h.count, 0);
-  const yourTotalHeadings = Object.values(yourAnalysis.headings).reduce((sum, h) => sum + h.count, 0);
+  // Core Web Vitals & Performance Comparison (CONFIRMED RANKING FACTORS)
+  const yourCWVScore = calculateCWVScore(yourAnalysis.performance);
+  const competitorCWVScore = calculateCWVScore(competitorAnalysis.performance);
   
-  if (competitorTotalHeadings > yourTotalHeadings + 3) {
-    // Analyze specific heading differences
-    const headingBreakdown = [];
-    ['h2', 'h3', 'h4', 'h5', 'h6'].forEach(level => {
-      const yourCount = yourAnalysis.headings[level]?.count || 0;
-      const compCount = competitorAnalysis.headings[level]?.count || 0;
-      if (compCount > yourCount) {
-        headingBreakdown.push(`${level.toUpperCase()}: ${compCount} vs your ${yourCount}`);
+  if (competitorCWVScore > yourCWVScore + 10) {
+    const performanceGaps = [];
+    
+    // HTTPS comparison
+    if (competitorAnalysis.performance.isHTTPS && !yourAnalysis.performance.isHTTPS) {
+      performanceGaps.push('HTTPS security');
+    }
+    
+    // Mobile optimization comparison
+    if (competitorAnalysis.performance.isResponsive.score > yourAnalysis.performance.isResponsive.score + 20) {
+      performanceGaps.push('Mobile responsiveness');
+    }
+    
+    // Image optimization comparison
+    const compImgOpt = competitorAnalysis.performance.imageOptimization;
+    const yourImgOpt = yourAnalysis.performance.imageOptimization;
+    
+    if (compImgOpt.total > 0 && yourImgOpt.total > 0) {
+      const compOptPercent = (compImgOpt.withDimensions / compImgOpt.total) * 100;
+      const yourOptPercent = (yourImgOpt.withDimensions / yourImgOpt.total) * 100;
+      
+      if (compOptPercent > yourOptPercent + 20) {
+        performanceGaps.push('Image dimension optimization');
+      }
+      
+      const compModernPercent = (compImgOpt.modernFormats / compImgOpt.total) * 100;
+      const yourModernPercent = (yourImgOpt.modernFormats / yourImgOpt.total) * 100;
+      
+      if (compModernPercent > yourModernPercent + 20) {
+        performanceGaps.push('Modern image formats');
+      }
+    }
+    
+    // Lazy loading comparison
+    if (competitorAnalysis.performance.hasLazyLoading && !yourAnalysis.performance.hasLazyLoading) {
+      performanceGaps.push('Image lazy loading');
+    }
+    
+    gaps.push({
+      category: 'Core Web Vitals',
+      issue: `Competitor has better Core Web Vitals optimization (estimated score: ${competitorCWVScore} vs ${yourCWVScore})`,
+      impact: 'high',
+      action: 'Optimize Core Web Vitals - these are confirmed Google ranking factors',
+      details: {
+        performanceGaps: performanceGaps,
+        competitorAdvantages: {
+          https: competitorAnalysis.performance.isHTTPS,
+          mobileScore: competitorAnalysis.performance.isResponsive.score,
+          lazyLoading: competitorAnalysis.performance.hasLazyLoading,
+          imageOptimization: compImgOpt
+        },
+        yourStatus: {
+          https: yourAnalysis.performance.isHTTPS,
+          mobileScore: yourAnalysis.performance.isResponsive.score,
+          lazyLoading: yourAnalysis.performance.hasLazyLoading,
+          imageOptimization: yourImgOpt
+        }
       }
     });
     
-    // Show competitor's actual H2 headings for content ideas
+    criticalActions.push({
+      priority: 'critical',
+      action: `Core Web Vitals gap: Focus on ${performanceGaps.slice(0, 2).join(' and ')} - confirmed ranking factors`,
+      category: 'Performance'
+    });
+  }
+  
+  // Only include content structure if there's a significant H2 gap AND they have less content
+  const competitorH2Count = competitorAnalysis.headings.h2?.count || 0;
+  const yourH2Count = yourAnalysis.headings.h2?.count || 0;
+  
+  if (competitorH2Count > yourH2Count + 5 && competitorAnalysis.contentLength > yourAnalysis.contentLength) {
     const competitorH2s = competitorAnalysis.headings.h2?.tags || [];
     const yourH2s = yourAnalysis.headings.h2?.tags || [];
     
     gaps.push({
-      category: 'Content Structure',
-      issue: `Competitor has better content structure (${competitorTotalHeadings} vs ${yourTotalHeadings} headings)`,
+      category: 'Content Topics',
+      issue: `Competitor covers more topics (${competitorH2Count} vs ${yourH2Count} H2 sections) with more content`,
       impact: 'medium',
-      action: 'Add more headings to break up content and improve structure',
+      action: 'Add topic sections to match competitor comprehensiveness',
       details: {
-        headingBreakdown: headingBreakdown,
-        competitorH2Topics: competitorH2s.slice(0, 8), // Show first 8 H2s for content ideas
+        competitorH2Topics: competitorH2s.slice(0, 5),
         yourH2Topics: yourH2s,
         recommendation: `Consider adding sections about: ${competitorH2s.filter(h2 => !yourH2s.some(your => your.toLowerCase().includes(h2.toLowerCase().split(' ')[0]))).slice(0, 3).join(', ')}`
       }
