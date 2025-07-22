@@ -145,35 +145,245 @@ app.post('/api/upload-semrush', upload.single('file'), async (req, res) => {
   }
 });
 
-// Competitive analysis endpoint
-app.post('/api/analyze-competition', async (req, res) => {
+// Phase B: NEW competitive analysis using REAL column structures from Phase A discovery
+app.post('/api/analyze-competition-real', upload.array('files'), async (req, res) => {
   try {
-    const { domain } = req.body;
+    console.log('\n=== PHASE B REAL COMPETITIVE ANALYSIS ===');
     
-    console.log('Starting analysis for domain:', domain);
-    console.log('Your data keys:', Object.keys(analysisData.yourData));
-    console.log('Competitor data keys:', Object.keys(analysisData.competitorData));
-    
-    if (!analysisData.yourData || !analysisData.competitorData) {
-      return res.status(400).json({ error: 'Missing data - please upload both your files and competitor files' });
+    const files = req.files;
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
     }
 
-    // Perform competitive analysis
-    const analysis = performCompetitiveAnalysis(analysisData.yourData, analysisData.competitorData, domain);
-    
-    console.log('Analysis result:', {
-      actionPlanCount: analysis.actionPlan.length,
-      keywordGaps: analysis.insights.keywordGaps,
-      backlinkGaps: analysis.insights.backlinkGaps
-    });
-    
+    let keywordGapData = null;
+    let backlinkGapData = null;
+    let backlinkData = null;
+
+    // Parse all uploaded files and identify types
+    for (const file of files) {
+      if (file.originalname.toLowerCase().endsWith('.csv')) {
+        const parsedData = parseCSV(file.buffer);
+        console.log(`Parsed ${file.originalname}: ${parsedData.length} rows`);
+        
+        if (file.originalname.toLowerCase().includes('keyword') && file.originalname.toLowerCase().includes('gap')) {
+          keywordGapData = parsedData;
+          console.log('Found keyword gap data');
+        } else if (file.originalname.toLowerCase().includes('backlink') && file.originalname.toLowerCase().includes('gap')) {
+          backlinkGapData = parsedData;
+          console.log('Found backlink gap data');
+        } else if (file.originalname.toLowerCase().includes('backlink')) {
+          backlinkData = parsedData;
+          console.log('Found backlink data');
+        }
+      }
+    }
+
+    const analysis = performRealCompetitiveAnalysis(keywordGapData, backlinkGapData, backlinkData);
     res.json(analysis);
 
   } catch (error) {
-    console.error('Analysis error:', error);
+    console.error('Real analysis error:', error);
     res.status(500).json({ error: 'Analysis failed: ' + error.message });
   }
 });
+
+// NEW: Real competitive analysis using actual SEMRush column structures
+function performRealCompetitiveAnalysis(keywordGapData, backlinkGapData, backlinkData) {
+  const actionPlan = [];
+  const insights = {
+    keywordGaps: 0,
+    backlinkGaps: 0,
+    competitiveScore: 50
+  };
+
+  console.log('Starting real competitive analysis...');
+
+  // Analyze Keyword Gaps using REAL column names
+  if (keywordGapData && keywordGapData.length > 0) {
+    console.log('Analyzing keyword gaps with real data...');
+    const keywordAnalysis = analyzeRealKeywordGaps(keywordGapData);
+    actionPlan.push(...keywordAnalysis.actions);
+    insights.keywordGaps = keywordAnalysis.gapCount;
+  }
+
+  // Analyze Backlink Gaps using REAL column names  
+  if (backlinkGapData && backlinkGapData.length > 0) {
+    console.log('Analyzing backlink gaps with real data...');
+    const backlinkAnalysis = analyzeRealBacklinkGaps(backlinkGapData);
+    actionPlan.push(...backlinkAnalysis.actions);
+    insights.backlinkGaps = backlinkAnalysis.gapCount;
+  }
+
+  // Calculate competitive score based on gaps found
+  insights.competitiveScore = calculateRealCompetitiveScore(insights.keywordGaps, insights.backlinkGaps);
+
+  // Sort actions by priority
+  actionPlan.sort((a, b) => {
+    const priorityOrder = { critical: 3, high: 2, medium: 1 };
+    return priorityOrder[b.priority] - priorityOrder[a.priority];
+  });
+
+  return {
+    actionPlan: actionPlan.slice(0, 15), // Top 15 actions
+    insights,
+    summary: `Found ${actionPlan.length} real optimization opportunities using actual SEMRush data structures`
+  };
+}
+
+// NEW: Analyze keyword gaps using REAL column names from Phase A discovery
+function analyzeRealKeywordGaps(keywordGapData) {
+  const actions = [];
+  let gapCount = 0;
+
+  console.log('=== REAL KEYWORD GAP ANALYSIS ===');
+  console.log('Sample columns:', Object.keys(keywordGapData[0]));
+
+  // Find your domain and competitor domain columns (they'll be actual domain names)
+  const columns = Object.keys(keywordGapData[0]);
+  let yourDomainCol = null;
+  let competitorDomainCol = null;
+
+  // Look for domain columns (should be like "servicecore.com" and "tank-track.com")
+  for (const col of columns) {
+    if (col.includes('.com') || col.includes('.net') || col.includes('.org')) {
+      if (!yourDomainCol && (col.includes('servicecore') || col.includes('your'))) {
+        yourDomainCol = col;
+      } else if (!competitorDomainCol) {
+        competitorDomainCol = col;
+      }
+    }
+  }
+
+  console.log(`Your domain column: ${yourDomainCol}`);
+  console.log(`Competitor domain column: ${competitorDomainCol}`);
+
+  if (!yourDomainCol || !competitorDomainCol) {
+    console.log('Could not identify domain columns');
+    return { actions, gapCount };
+  }
+
+  // Analyze each keyword for gaps
+  keywordGapData.forEach((row, index) => {
+    const keyword = row['Keyword'] || row['keyword'] || '';
+    const yourPosition = parseInt(row[yourDomainCol]) || 999;
+    const competitorPosition = parseInt(row[competitorDomainCol]) || 999;
+    const volume = parseInt(row['Volume'] || row['Search Volume'] || row['volume']) || 0;
+    const difficulty = parseInt(row['Keyword Difficulty'] || row['difficulty']) || 0;
+    const cpc = parseFloat(row['CPC'] || row['cpc']) || 0;
+
+    if (index < 3) {
+      console.log(`Row ${index}: ${keyword} - You: ${yourPosition}, Competitor: ${competitorPosition}, Volume: ${volume}`);
+    }
+
+    // Find gaps where competitor beats you
+    if (keyword && competitorPosition < yourPosition && volume > 50) {
+      gapCount++;
+      
+      const positionGap = yourPosition - competitorPosition;
+      let priority = 'medium';
+      
+      if (volume > 500 && positionGap > 5) priority = 'critical';
+      else if (volume > 200 && positionGap > 3) priority = 'high';
+
+      actions.push({
+        priority,
+        title: `Improve ranking for "${keyword}"`,
+        description: `Competitor ranks #${competitorPosition}, you rank #${yourPosition}. ${volume.toLocaleString()} monthly searches.`,
+        reason: `${positionGap} position gap costs you traffic. CPC: $${cpc}, Difficulty: ${difficulty}`,
+        keyword,
+        yourPosition,
+        competitorPosition,
+        volume,
+        gap: positionGap
+      });
+    }
+  });
+
+  console.log(`Found ${gapCount} keyword gaps, created ${actions.length} actions`);
+  return { actions, gapCount };
+}
+
+// NEW: Analyze backlink gaps using REAL column names from Phase A discovery  
+function analyzeRealBacklinkGaps(backlinkGapData) {
+  const actions = [];
+  let gapCount = 0;
+
+  console.log('=== REAL BACKLINK GAP ANALYSIS ===');
+  console.log('Sample columns:', Object.keys(backlinkGapData[0]));
+
+  // Find your domain and competitor domain columns (actual URLs/domains)
+  const columns = Object.keys(backlinkGapData[0]);
+  let yourDomainCol = null;
+  let competitorDomainCol = null;
+
+  // Look for domain columns 
+  for (const col of columns) {
+    if (col.includes('servicecore') || col.includes('https://')) {
+      yourDomainCol = col;
+    } else if (col.includes('.com') || col.includes('.net')) {
+      competitorDomainCol = col;
+    }
+  }
+
+  console.log(`Your domain column: ${yourDomainCol}`);
+  console.log(`Competitor domain column: ${competitorDomainCol}`);
+
+  if (!yourDomainCol || !competitorDomainCol) {
+    console.log('Could not identify domain columns');
+    return { actions, gapCount };
+  }
+
+  // Analyze each domain for backlink gaps
+  backlinkGapData.forEach((row, index) => {
+    const domain = row['Domain'] || row['domain'] || '';
+    const yourBacklinks = parseInt(row[yourDomainCol]) || 0;
+    const competitorBacklinks = parseInt(row[competitorDomainCol]) || 0;
+    const domainAuthority = parseInt(row['Domain ascore'] || row['DA'] || row['authority']) || 0;
+
+    if (index < 3) {
+      console.log(`Row ${index}: ${domain} - You: ${yourBacklinks}, Competitor: ${competitorBacklinks}, DA: ${domainAuthority}`);
+    }
+
+    // Find gaps where competitor has backlinks and you don't
+    if (domain && yourBacklinks === 0 && competitorBacklinks > 0 && domainAuthority > 20) {
+      gapCount++;
+      
+      let priority = 'medium';
+      if (domainAuthority > 70) priority = 'critical';
+      else if (domainAuthority > 50) priority = 'high';
+
+      actions.push({
+        priority,
+        title: `Get backlink from ${domain}`,
+        description: `Competitor has ${competitorBacklinks} backlink(s), you have 0. Domain Authority: ${domainAuthority}`,
+        reason: `High-authority domain linking to competitor but not you. Link building opportunity.`,
+        domain,
+        competitorBacklinks,
+        domainAuthority
+      });
+    }
+  });
+
+  console.log(`Found ${gapCount} backlink gaps, created ${actions.length} actions`);
+  return { actions, gapCount };
+}
+
+// NEW: Calculate competitive score based on real gaps found
+function calculateRealCompetitiveScore(keywordGaps, backlinkGaps) {
+  let score = 50; // Start neutral
+  
+  // Keyword gaps impact (more gaps = lower score)
+  if (keywordGaps > 10) score -= 20;
+  else if (keywordGaps > 5) score -= 10;
+  else if (keywordGaps < 3) score += 10;
+  
+  // Backlink gaps impact
+  if (backlinkGaps > 50) score -= 15;
+  else if (backlinkGaps > 20) score -= 10;
+  else if (backlinkGaps < 10) score += 5;
+  
+  return Math.max(0, Math.min(100, score));
+}
 
 // Helper function to parse CSV
 function parseCSV(buffer) {
@@ -234,241 +444,6 @@ function detectReportType(filename) {
   if (name.includes('backlink') && name.includes('gap')) return 'backlink_gap';
   if (name.includes('organic')) return 'organic_research';
   return 'unknown';
-}
-
-// Main competitive analysis function
-function performCompetitiveAnalysis(yourData, competitorData, domain) {
-  const actionPlan = [];
-  const insights = {
-    keywordGaps: 0,
-    backlinkGaps: 0,
-    competitiveScore: 50
-  };
-
-  // Analyze Keyword Gaps
-  if (yourData.keyword_gap && competitorData.keyword_gap) {
-    const keywordAnalysis = analyzeKeywordGaps(yourData.keyword_gap, competitorData.keyword_gap);
-    actionPlan.push(...keywordAnalysis.actions);
-    insights.keywordGaps = keywordAnalysis.gapCount;
-  }
-
-  // Analyze Domain Overview
-  if (yourData.domain_overview && competitorData.domain_overview) {
-    const domainAnalysis = analyzeDomainGaps(yourData.domain_overview, competitorData.domain_overview);
-    actionPlan.push(...domainAnalysis.actions);
-  }
-
-  // Analyze Backlink Gaps
-  if (yourData.backlink_gap && competitorData.backlink_gap) {
-    const backlinkAnalysis = analyzeBacklinkGaps(yourData.backlink_gap, competitorData.backlink_gap);
-    actionPlan.push(...backlinkAnalysis.actions);
-    insights.backlinkGaps = backlinkAnalysis.gapCount;
-  }
-
-  // Analyze Organic Research
-  if (yourData.organic_research && competitorData.organic_research) {
-    const organicAnalysis = analyzeOrganicGaps(yourData.organic_research, competitorData.organic_research);
-    actionPlan.push(...organicAnalysis.actions);
-  }
-
-  // Calculate competitive score
-  insights.competitiveScore = calculateCompetitiveScore(actionPlan);
-
-  // Sort actions by priority
-  actionPlan.sort((a, b) => {
-    const priorityOrder = { critical: 3, high: 2, medium: 1 };
-    return priorityOrder[b.priority] - priorityOrder[a.priority];
-  });
-
-  return {
-    actionPlan: actionPlan.slice(0, 10), // Top 10 actions
-    insights,
-    summary: `Found ${actionPlan.length} optimization opportunities to beat your competition`
-  };
-}
-
-// Analyze keyword gaps
-function analyzeKeywordGaps(yourKeywords, competitorKeywords) {
-  const actions = [];
-  let gapCount = 0;
-
-  console.log('Analyzing keyword gaps...');
-  console.log('Your keywords count:', Array.isArray(yourKeywords) ? yourKeywords.length : 'not array');
-  console.log('Competitor keywords count:', Array.isArray(competitorKeywords) ? competitorKeywords.length : 'not array');
-
-  if (!Array.isArray(yourKeywords) || !Array.isArray(competitorKeywords)) {
-    console.log('One of the keyword arrays is not an array');
-    return { actions, gapCount };
-  }
-
-  if (yourKeywords.length > 0) {
-    console.log('Your keywords sample columns:', Object.keys(yourKeywords[0]));
-  }
-  if (competitorKeywords.length > 0) {
-    console.log('Competitor keywords sample columns:', Object.keys(competitorKeywords[0]));
-  }
-
-  // Find keywords competitor ranks for that you don't - try multiple column name variations
-  const yourKeywordSet = new Set();
-  yourKeywords.forEach(k => {
-    const keyword = k.Keyword || k.keyword || k.Keywords || k.Query || k.query || k['Search Term'] || '';
-    if (keyword) yourKeywordSet.add(keyword.toLowerCase());
-  });
-  
-  competitorKeywords.forEach((compKeyword, index) => {
-    // Try different column name variations
-    const keyword = compKeyword.Keyword || compKeyword.keyword || compKeyword.Keywords || 
-                   compKeyword.Query || compKeyword.query || compKeyword['Search Term'] || '';
-    
-    const position = parseInt(compKeyword.Position) || parseInt(compKeyword.position) || 
-                    parseInt(compKeyword.Pos) || parseInt(compKeyword.pos) || 100;
-    
-    const volume = parseInt(compKeyword['Search Volume']) || parseInt(compKeyword.volume) || 
-                  parseInt(compKeyword['Vol.']) || parseInt(compKeyword.Volume) || 0;
-    
-    if (index < 3) { // Debug first few rows
-      console.log(`Row ${index}: keyword="${keyword}", position=${position}, volume=${volume}`);
-    }
-    
-    if (keyword && position <= 20 && volume > 100 && !yourKeywordSet.has(keyword.toLowerCase())) {
-      gapCount++;
-      
-      if (gapCount <= 10) { // Increased to 10 gaps
-        actions.push({
-          priority: position <= 5 ? 'critical' : position <= 10 ? 'high' : 'medium',
-          title: `Target keyword: "${keyword}"`,
-          description: `Competitor ranks #${position} for this ${volume.toLocaleString()} search/month keyword`,
-          reason: `They're getting traffic you're missing. High-value keyword opportunity.`
-        });
-      }
-    }
-  });
-
-  console.log(`Found ${gapCount} keyword gaps, created ${actions.length} actions`);
-  return { actions, gapCount };
-}
-
-// Analyze domain authority gaps
-function analyzeDomainGaps(yourDomain, competitorDomain) {
-  const actions = [];
-
-  if (!Array.isArray(yourDomain) || !Array.isArray(competitorDomain)) {
-    return { actions };
-  }
-
-  const yourStats = yourDomain[0] || {};
-  const compStats = competitorDomain[0] || {};
-
-  const yourAuthority = parseInt(yourStats['Authority Score']) || parseInt(yourStats.authority) || 0;
-  const compAuthority = parseInt(compStats['Authority Score']) || parseInt(compStats.authority) || 0;
-
-  const yourBacklinks = parseInt(yourStats.Backlinks) || parseInt(yourStats.backlinks) || 0;
-  const compBacklinks = parseInt(compStats.Backlinks) || parseInt(compStats.backlinks) || 0;
-
-  if (compAuthority > yourAuthority + 10) {
-    actions.push({
-      priority: 'high',
-      title: 'Improve Domain Authority',
-      description: `Competitor has ${compAuthority} authority vs your ${yourAuthority}`,
-      reason: 'Higher domain authority = better rankings. Focus on quality backlinks.'
-    });
-  }
-
-  if (compBacklinks > yourBacklinks * 2) {
-    actions.push({
-      priority: 'critical',
-      title: 'Aggressive Link Building Required',
-      description: `Competitor has ${compBacklinks.toLocaleString()} backlinks vs your ${yourBacklinks.toLocaleString()}`,
-      reason: 'Massive backlink gap. You need a serious link building campaign.'
-    });
-  }
-
-  return { actions };
-}
-
-// Analyze backlink gaps
-function analyzeBacklinkGaps(yourBacklinks, competitorBacklinks) {
-  const actions = [];
-  let gapCount = 0;
-
-  if (!Array.isArray(yourBacklinks) || !Array.isArray(competitorBacklinks)) {
-    return { actions, gapCount };
-  }
-
-  // Find high-authority domains linking to competitors but not you
-  const yourDomains = new Set(yourBacklinks.map(b => b['Referring Domain'] || b.domain || ''));
-  
-  competitorBacklinks.forEach(compBacklink => {
-    const domain = compBacklink['Referring Domain'] || compBacklink.domain || '';
-    const authority = parseInt(compBacklink['Authority Score']) || parseInt(compBacklink.authority) || 0;
-    
-    if (domain && authority > 30 && !yourDomains.has(domain)) {
-      gapCount++;
-      
-      if (gapCount <= 10) {
-        actions.push({
-          priority: authority > 70 ? 'critical' : authority > 50 ? 'high' : 'medium',
-          title: `Get backlink from ${domain}`,
-          description: `High authority site (${authority}) linking to competitor`,
-          reason: 'They link to your competitor, they could link to you too.'
-        });
-      }
-    }
-  });
-
-  return { actions, gapCount };
-}
-
-// Analyze organic research gaps
-function analyzeOrganicGaps(yourOrganic, competitorOrganic) {
-  const actions = [];
-
-  if (!Array.isArray(yourOrganic) || !Array.isArray(competitorOrganic)) {
-    return { actions };
-  }
-
-  // Find high-traffic pages competitors have that you don't
-  const yourUrls = new Set(yourOrganic.map(p => (p.URL || p.url || '').toLowerCase()));
-  
-  competitorOrganic.slice(0, 10).forEach(compPage => {
-    const url = compPage.URL || compPage.url || '';
-    const traffic = parseInt(compPage.Traffic) || parseInt(compPage.traffic) || 0;
-    const keywords = parseInt(compPage.Keywords) || parseInt(compPage.keywords) || 0;
-    
-    if (traffic > 1000 && keywords > 50) {
-      const pageType = getPageType(url);
-      
-      actions.push({
-        priority: traffic > 10000 ? 'critical' : 'high',
-        title: `Create ${pageType} content`,
-        description: `Competitor's ${pageType} gets ${traffic.toLocaleString()} monthly traffic`,
-        reason: `They rank for ${keywords} keywords with this content type. Opportunity for you.`
-      });
-    }
-  });
-
-  return { actions };
-}
-
-function getPageType(url) {
-  const path = url.toLowerCase();
-  if (path.includes('/blog/')) return 'blog post';
-  if (path.includes('/product/')) return 'product page';
-  if (path.includes('/service/')) return 'service page';
-  if (path.includes('/guide/')) return 'guide';
-  if (path.includes('/tool/')) return 'tool page';
-  return 'landing page';
-}
-
-function calculateCompetitiveScore(actions) {
-  const criticalCount = actions.filter(a => a.priority === 'critical').length;
-  const highCount = actions.filter(a => a.priority === 'high').length;
-  
-  let score = 85;
-  score -= (criticalCount * 15);
-  score -= (highCount * 8);
-  
-  return Math.max(10, Math.min(100, score));
 }
 
 // Serve React app

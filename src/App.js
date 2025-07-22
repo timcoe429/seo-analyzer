@@ -249,6 +249,202 @@ function App() {
             <li>• This helps us build analysis logic around YOUR actual data structure</li>
           </ul>
         </div>
+
+        {/* Phase B Section */}
+        <div className="mt-12 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg p-6 border-2 border-green-200">
+          <h2 className="text-2xl font-bold text-green-900 mb-4 flex items-center">
+            🚀 Phase B: REAL Competitive Analysis
+          </h2>
+          <p className="text-green-800 mb-4">
+            Upload your keyword gap and backlink gap CSV files for analysis using REAL column structures from Phase A discovery.
+          </p>
+          
+          <PhaseBAnalysis />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Phase B Component for Real Competitive Analysis
+function PhaseBAnalysis() {
+  const [files, setFiles] = useState([]);
+  const [analysisResults, setAnalysisResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleFilesChange = (e) => {
+    setFiles(Array.from(e.target.files));
+    setAnalysisResults(null);
+    setError('');
+  };
+
+  const analyzeReal = async () => {
+    if (files.length === 0) {
+      setError('Please select your SEMRush CSV files');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setAnalysisResults(null);
+
+    try {
+      const formData = new FormData();
+      files.forEach(file => {
+        formData.append('files', file);
+      });
+
+      const response = await fetch('/api/analyze-competition-real', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`Analysis failed: ${response.status}`);
+      }
+
+      const results = await response.json();
+      console.log('Phase B results:', results);
+      setAnalysisResults(results);
+    } catch (error) {
+      console.error('Phase B error:', error);
+      setError('Analysis failed: ' + error.message + '. Check the console for details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      {/* File Upload */}
+      <div className="mb-4">
+        <input
+          type="file"
+          multiple
+          accept=".csv"
+          onChange={handleFilesChange}
+          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+        />
+        {files.length > 0 && (
+          <div className="mt-2">
+            <p className="text-sm text-gray-600 mb-1">Selected files:</p>
+            {files.map((file, index) => (
+              <div key={index} className="text-xs text-green-700 bg-green-100 p-1 rounded mb-1">
+                {file.name} ({(file.size / 1024).toFixed(1)} KB)
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button
+        onClick={analyzeReal}
+        disabled={files.length === 0 || loading}
+        className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center"
+      >
+        {loading ? (
+          <>
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+            Analyzing with Real Data...
+          </>
+        ) : (
+          <>
+            <Database className="mr-2" size={16} />
+            Run REAL Competitive Analysis
+          </>
+        )}
+      </button>
+
+      {/* Error Display */}
+      {error && (
+        <div className="mt-4 bg-red-50 border-l-4 border-red-400 p-4">
+          <div className="flex">
+            <AlertCircle className="h-5 w-5 text-red-400 mr-2" />
+            <p className="text-red-700">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Results Display */}
+      {analysisResults && (
+        <div className="mt-6 bg-white rounded-lg shadow-md p-6 border-2 border-green-200">
+          <h3 className="text-xl font-semibold mb-4 text-green-900">🎯 Real Competitive Analysis Results</h3>
+          
+          {/* Summary */}
+          <div className="mb-6 p-4 bg-green-50 rounded-md">
+            <p className="text-green-800 font-medium">{analysisResults.summary}</p>
+          </div>
+
+          {/* Key Insights */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <h4 className="font-semibold text-red-900 mb-2">Keyword Gaps</h4>
+              <div className="text-2xl font-bold text-red-900">{analysisResults.insights.keywordGaps}</div>
+              <div className="text-sm text-red-700">Keywords where competitor beats you</div>
+            </div>
+            
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <h4 className="font-semibold text-orange-900 mb-2">Backlink Opportunities</h4>
+              <div className="text-2xl font-bold text-orange-900">{analysisResults.insights.backlinkGaps}</div>
+              <div className="text-sm text-orange-700">Domains linking to them, not you</div>
+            </div>
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-semibold text-blue-900 mb-2">Competitive Score</h4>
+              <div className="text-2xl font-bold text-blue-900">{analysisResults.insights.competitiveScore}/100</div>
+              <div className="text-sm text-blue-700">Your competitive position</div>
+            </div>
+          </div>
+
+          {/* Action Plan */}
+          <div>
+            <h4 className="font-semibold text-gray-900 mb-4">🎯 Action Plan to Beat Competition</h4>
+            <div className="space-y-3">
+              {analysisResults.actionPlan.map((action, index) => (
+                <div key={index} className={`p-4 rounded-lg border-l-4 ${
+                  action.priority === 'critical' ? 'bg-red-50 border-red-500' :
+                  action.priority === 'high' ? 'bg-orange-50 border-orange-500' :
+                  'bg-yellow-50 border-yellow-500'
+                }`}>
+                  <div className="font-semibold text-gray-900 flex items-center">
+                    <span className={`inline-block w-3 h-3 rounded-full mr-2 ${
+                      action.priority === 'critical' ? 'bg-red-500' :
+                      action.priority === 'high' ? 'bg-orange-500' : 'bg-yellow-500'
+                    }`}></span>
+                    {action.title}
+                  </div>
+                  <div className="text-gray-700 mt-1">{action.description}</div>
+                  <div className="text-sm text-gray-600 mt-2">
+                    <strong>Why:</strong> {action.reason}
+                  </div>
+                  {action.keyword && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      Keyword: {action.keyword} | Gap: {action.gap} positions | Volume: {action.volume?.toLocaleString()}
+                    </div>
+                  )}
+                  {action.domain && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      Domain: {action.domain} | Authority: {action.domainAuthority} | Their links: {action.competitorBacklinks}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Instructions */}
+      <div className="mt-6 bg-green-50 rounded-lg p-4">
+        <h4 className="font-semibold text-green-900 mb-2">📋 How to Use Phase B</h4>
+        <ul className="text-green-800 text-sm space-y-1">
+          <li>• Upload your keyword gap CSV (like "keyword-gap-analysis-sc.csv")</li>
+          <li>• Upload your backlink gap CSV (like "backlink-gap.csv")</li>
+          <li>• Uses REAL column names discovered in Phase A</li>
+          <li>• Finds actual competitive gaps with prioritized action plan</li>
+          <li>• Should find your "Septic Business Software" gap and others!</li>
+        </ul>
       </div>
     </div>
   );
