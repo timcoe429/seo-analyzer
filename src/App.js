@@ -78,9 +78,17 @@ function App() {
         setNewProjectName('');
         setNewProjectDomain('');
         setError('');
+      } else {
+        const errorData = await response.json();
+        if (response.status === 503) {
+          setError('Database not connected yet. Please add a PostgreSQL database to Railway first.');
+        } else {
+          setError(errorData.error || 'Failed to create project');
+        }
       }
     } catch (error) {
-      setError('Failed to create project');
+      console.error('Project creation error:', error);
+      setError('Failed to create project - server may not be available');
     }
   };
 
@@ -126,16 +134,12 @@ function App() {
       return;
     }
 
-    if (!currentProject) {
-      setError('Please select a project first');
-      return;
-    }
-
     setLoading(true);
     setError('');
     setResults(null);
 
     try {
+      // Use project endpoint if we have a project, otherwise use basic endpoint
       const endpoint = currentProject ? 
         `/api/projects/${currentProject.id}/analyze` : 
         '/api/analyze';
@@ -228,7 +232,10 @@ function App() {
           
           <div className="flex gap-2">
             <button
-              onClick={() => setShowProjectModal(true)}
+              onClick={() => {
+                setShowProjectModal(true);
+                setError('');
+              }}
               className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               <Plus className="w-4 h-4" />
@@ -307,16 +314,16 @@ function App() {
 
           <button
             onClick={analyzeURL}
-            disabled={loading || !currentProject}
+            disabled={loading}
             className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             <Search className="w-4 h-4" />
             {loading ? 'Analyzing...' : 'Analyze SEO'}
           </button>
           
-          {!currentProject && (
+          {!currentProject && projects.length === 0 && (
             <p className="text-sm text-orange-600 text-center">
-              Please select or create a project first
+              ⚠️ No projects found. Create a project to save your SEO analyses and upload SEMRush data.
             </p>
           )}
         </div>
@@ -536,6 +543,12 @@ function App() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+              
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+                  {error}
+                </div>
+              )}
               
               <div className="flex gap-3 pt-4">
                 <button
