@@ -52,7 +52,9 @@ app.post('/api/analyze', async (req, res) => {
     });
 
     const $ = cheerio.load(response.data);
+    console.log(`Analyzing ${url} - Content length: ${$('body').text().length} chars`);
     const mainAnalysis = performSEOAnalysis($, url, targetKeyword, isPillarPost);
+    console.log(`Analysis complete - Word count: ${mainAnalysis.contentLength}, Issues: ${mainAnalysis.issues?.length || 0}`);
 
     let competitorAnalysis = null;
     let comparison = null;
@@ -68,7 +70,7 @@ app.post('/api/analyze', async (req, res) => {
         });
         const competitor$ = cheerio.load(competitorResponse.data);
         competitorAnalysis = performSEOAnalysis(competitor$, competitorUrl, targetKeyword, isPillarPost);
-        comparison = generateComparison(mainAnalysis, competitorAnalysis, targetKeyword, isPillarPost);
+        comparison = performCompetitorComparison(mainAnalysis, competitorAnalysis);
       } catch (error) {
         console.error('Error analyzing competitor:', error);
         competitorAnalysis = { error: 'Failed to analyze competitor URL' };
@@ -198,6 +200,91 @@ function calculateCWVScore(performance) {
   if (performance.renderBlockingResources === 0) score += 5;
   
   return Math.min(100, Math.round(score));
+}
+
+// Helper function to calculate readability score
+function calculateReadabilityScore(text) {
+  if (!text || text.length === 0) return 0;
+  
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const words = text.split(/\s+/).filter(w => w.length > 0);
+  const syllables = words.reduce((count, word) => {
+    return count + countSyllables(word);
+  }, 0);
+  
+  if (sentences.length === 0 || words.length === 0) return 0;
+  
+  const avgWordsPerSentence = words.length / sentences.length;
+  const avgSyllablesPerWord = syllables / words.length;
+  
+  // Flesch Reading Ease
+  const score = 206.835 - (1.015 * avgWordsPerSentence) - (84.6 * avgSyllablesPerWord);
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function countSyllables(word) {
+  word = word.toLowerCase();
+  if (word.length <= 3) return 1;
+  word = word.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '');
+  word = word.replace(/^y/, '');
+  const matches = word.match(/[aeiouy]{1,2}/g);
+  return matches ? matches.length : 1;
+}
+
+// Helper function to analyze image optimization
+function analyzeImageOptimization($) {
+  const images = $('img');
+  const analysis = {
+    total: images.length,
+    withDimensions: 0,
+    withLazyLoading: 0,
+    modernFormats: 0,
+    missingAlt: 0
+  };
+  
+  images.each((i, img) => {
+    const $img = $(img);
+    if ($img.attr('width') && $img.attr('height')) analysis.withDimensions++;
+    if ($img.attr('loading') === 'lazy') analysis.withLazyLoading++;
+    if (!$img.attr('alt')) analysis.missingAlt++;
+    
+    const src = $img.attr('src') || '';
+    if (src.includes('.webp') || src.includes('.avif')) analysis.modernFormats++;
+  });
+  
+  return analysis;
+}
+
+// Helper function to check responsive design
+function checkResponsiveDesign($) {
+  let score = 0;
+  let maxScore = 100;
+  
+  // Viewport meta tag
+  if ($('meta[name="viewport"]').length > 0) score += 30;
+  
+  // CSS media queries (check for responsive CSS)
+  const stylesheets = $('style, link[rel="stylesheet"]');
+  let hasMediaQueries = false;
+  stylesheets.each((i, el) => {
+    const content = $(el).html() || '';
+    if (content.includes('@media') || content.includes('max-width') || content.includes('min-width')) {
+      hasMediaQueries = true;
+    }
+  });
+  if (hasMediaQueries) score += 20;
+  
+  // Responsive images
+  if ($('img[srcset]').length > 0) score += 15;
+  
+  // Flexible layouts (CSS Grid/Flexbox indicators)
+  const hasFlexibleLayouts = $('[class*="flex"], [class*="grid"], [style*="flex"], [style*="grid"]').length > 0;
+  if (hasFlexibleLayouts) score += 20;
+  
+  // Mobile-friendly navigation
+  if ($('[class*="mobile"], [class*="hamburger"], [class*="nav-toggle"]').length > 0) score += 15;
+  
+  return { score: Math.min(score, maxScore), maxScore };
 }
 
 // Function to perform comprehensive SEO analysis
@@ -705,7 +792,7 @@ function performSEOAnalysis($, url, targetKeyword, isPillarPost = false) {
 }
 
 // Function to generate competitor comparison
-function generateComparison(yourAnalysis, competitorAnalysis, targetKeyword, isPillarPost = false) {
+function performCompetitorComparison(yourAnalysis, competitorAnalysis) {
   const gaps = [];
   const advantages = [];
   const criticalActions = [];
@@ -1266,22 +1353,29 @@ app.post('/api/projects/:id/upload', upload.single('file'), async (req, res) => 
     if (filename.toLowerCase().endsWith('.csv')) {
       try {
         const csvData = [];
-        const stream = require('stream');
-        const bufferStream = new stream.PassThrough();
-        bufferStream.end(fileBuffer);
-
-        await new Promise((resolve, reject) => {
-          bufferStream
-            .pipe(csv())
-            .on('data', (row) => csvData.push(row))
-            .on('end', resolve)
-            .on('error', reject);
-        });
+        const csvString = fileBuffer.toString('utf8');
+        const lines = csvString.split('\n');
+        
+        if (lines.length > 0) {
+          const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+          
+          for (let i = 1; i < lines.length; i++) {
+            if (lines[i].trim()) {
+              const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+              const row = {};
+              headers.forEach((header, index) => {
+                row[header] = values[index] || '';
+              });
+              csvData.push(row);
+            }
+          }
+        }
 
         parsedData = csvData;
+        console.log(`Parsed ${csvData.length} rows from ${filename}`);
       } catch (parseError) {
         console.error('CSV parsing error:', parseError);
-        return res.status(400).json({ error: 'Failed to parse CSV file' });
+        parsedData = { error: 'Failed to parse CSV', filename: filename };
       }
     } else if (filename.toLowerCase().endsWith('.pdf')) {
       // For PDFs, we store the raw file for now
