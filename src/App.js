@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Upload, Target, BarChart3, AlertCircle, CheckCircle, FileText } from 'lucide-react';
+import { Upload, Target, BarChart3, AlertCircle, FileText } from 'lucide-react';
 import './App.css';
 
 function App() {
@@ -35,7 +35,7 @@ function App() {
 
     try {
       // Upload your files
-      const yourUploads = await Promise.all(
+      await Promise.all(
         yourFiles.map(async (file) => {
           const formData = new FormData();
           formData.append('file', file);
@@ -52,7 +52,7 @@ function App() {
       );
 
       // Upload competitor files
-      const competitorUploads = await Promise.all(
+      await Promise.all(
         competitorFiles.map(async (file) => {
           const formData = new FormData();
           formData.append('file', file);
