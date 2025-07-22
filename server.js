@@ -587,16 +587,36 @@ function generateComparison(yourAnalysis, competitorAnalysis, targetKeyword, isP
     });
   }
 
-  // Heading structure comparison
+  // Detailed heading structure comparison
   const competitorTotalHeadings = Object.values(competitorAnalysis.headings).reduce((sum, h) => sum + h.count, 0);
   const yourTotalHeadings = Object.values(yourAnalysis.headings).reduce((sum, h) => sum + h.count, 0);
   
   if (competitorTotalHeadings > yourTotalHeadings + 3) {
+    // Analyze specific heading differences
+    const headingBreakdown = [];
+    ['h2', 'h3', 'h4', 'h5', 'h6'].forEach(level => {
+      const yourCount = yourAnalysis.headings[level]?.count || 0;
+      const compCount = competitorAnalysis.headings[level]?.count || 0;
+      if (compCount > yourCount) {
+        headingBreakdown.push(`${level.toUpperCase()}: ${compCount} vs your ${yourCount}`);
+      }
+    });
+    
+    // Show competitor's actual H2 headings for content ideas
+    const competitorH2s = competitorAnalysis.headings.h2?.tags || [];
+    const yourH2s = yourAnalysis.headings.h2?.tags || [];
+    
     gaps.push({
       category: 'Content Structure',
       issue: `Competitor has better content structure (${competitorTotalHeadings} vs ${yourTotalHeadings} headings)`,
       impact: 'medium',
-      action: 'Add more headings to break up content and improve structure'
+      action: 'Add more headings to break up content and improve structure',
+      details: {
+        headingBreakdown: headingBreakdown,
+        competitorH2Topics: competitorH2s.slice(0, 8), // Show first 8 H2s for content ideas
+        yourH2Topics: yourH2s,
+        recommendation: `Consider adding sections about: ${competitorH2s.filter(h2 => !yourH2s.some(your => your.toLowerCase().includes(h2.toLowerCase().split(' ')[0]))).slice(0, 3).join(', ')}`
+      }
     });
   }
 
@@ -623,16 +643,65 @@ function generateComparison(yourAnalysis, competitorAnalysis, targetKeyword, isP
     });
   }
 
-  // Technical SEO comparison
+  // Detailed technical SEO comparison
   const competitorTechnicalScore = Object.values(competitorAnalysis.technical).filter(v => v === true || (typeof v === 'string' && v.length > 0)).length;
   const yourTechnicalScore = Object.values(yourAnalysis.technical).filter(v => v === true || (typeof v === 'string' && v.length > 0)).length;
   
   if (competitorTechnicalScore > yourTechnicalScore) {
+    const missingElements = [];
+    
+    // Check specific technical elements
+    if (competitorAnalysis.technical.viewport && !yourAnalysis.technical.viewport) {
+      missingElements.push('Viewport meta tag');
+    }
+    if (competitorAnalysis.technical.charset && !yourAnalysis.technical.charset) {
+      missingElements.push('Charset declaration');
+    }
+    if (competitorAnalysis.technical.canonical && !yourAnalysis.technical.canonical) {
+      missingElements.push('Canonical URL');
+    }
+    if (competitorAnalysis.technical.favicon && !yourAnalysis.technical.favicon) {
+      missingElements.push('Favicon');
+    }
+    
+    // Check Open Graph tags
+    const competitorHasOG = competitorAnalysis.technical.openGraph.title || competitorAnalysis.technical.openGraph.description;
+    const yourHasOG = yourAnalysis.technical.openGraph.title || yourAnalysis.technical.openGraph.description;
+    if (competitorHasOG && !yourHasOG) {
+      missingElements.push('Open Graph tags');
+    }
+    
+    // Check Twitter Card tags
+    const competitorHasTwitter = competitorAnalysis.technical.twitterCard.card || competitorAnalysis.technical.twitterCard.title;
+    const yourHasTwitter = yourAnalysis.technical.twitterCard.card || yourAnalysis.technical.twitterCard.title;
+    if (competitorHasTwitter && !yourHasTwitter) {
+      missingElements.push('Twitter Card tags');
+    }
+    
     gaps.push({
       category: 'Technical',
-      issue: `Competitor has better technical SEO implementation`,
+      issue: `Competitor has better technical SEO implementation (${competitorTechnicalScore} vs ${yourTechnicalScore} elements)`,
       impact: 'medium',
-      action: 'Review and implement missing technical SEO elements'
+      action: 'Review and implement missing technical SEO elements',
+      details: {
+        missingElements: missingElements,
+        competitorHas: {
+          viewport: competitorAnalysis.technical.viewport,
+          charset: competitorAnalysis.technical.charset,
+          canonical: !!competitorAnalysis.technical.canonical,
+          favicon: competitorAnalysis.technical.favicon,
+          openGraph: competitorHasOG,
+          twitterCard: competitorHasTwitter
+        },
+        youHave: {
+          viewport: yourAnalysis.technical.viewport,
+          charset: yourAnalysis.technical.charset,
+          canonical: !!yourAnalysis.technical.canonical,
+          favicon: yourAnalysis.technical.favicon,
+          openGraph: yourHasOG,
+          twitterCard: yourHasTwitter
+        }
+      }
     });
   }
 
@@ -836,10 +905,27 @@ function generateAIReport(yourAnalysis, competitorAnalysis = null, comparison = 
       report += `\n`;
     }
 
-    // Add all gaps
+    // Add all gaps with detailed information
     report += `#### All Competitive Gaps:\n`;
     comparison.gaps.forEach((gap, index) => {
-      report += `${index + 1}. **${gap.category}** (${gap.impact} impact): ${gap.issue}\n   → Action: ${gap.action}\n\n`;
+      report += `${index + 1}. **${gap.category}** (${gap.impact} impact): ${gap.issue}\n   → Action: ${gap.action}\n`;
+      
+      // Add specific details if available
+      if (gap.details) {
+        if (gap.details.missingElements && gap.details.missingElements.length > 0) {
+          report += `   → Specifically missing: ${gap.details.missingElements.join(', ')}\n`;
+        }
+        if (gap.details.competitorH2Topics && gap.details.competitorH2Topics.length > 0) {
+          report += `   → Competitor's H2 sections: ${gap.details.competitorH2Topics.slice(0, 5).join(', ')}\n`;
+          if (gap.details.recommendation) {
+            report += `   → ${gap.details.recommendation}\n`;
+          }
+        }
+        if (gap.details.headingBreakdown && gap.details.headingBreakdown.length > 0) {
+          report += `   → Heading gaps: ${gap.details.headingBreakdown.join(', ')}\n`;
+        }
+      }
+      report += `\n`;
     });
 
     // Add advantages

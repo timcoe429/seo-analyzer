@@ -481,16 +481,51 @@ function App() {
                 <h3 className="text-lg font-semibold mb-4">Competitive Gaps</h3>
                                  <div className="space-y-3">
                    {(comparison.gaps || []).map((gap, index) => (
-                    <div key={index} className="p-4 border border-gray-200 rounded-md">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="font-medium text-gray-900">{gap.category}</div>
-                        <span className={`text-sm ${getImpactColor(gap.impact)}`}>
-                          {gap.impact} impact
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-600 mb-2">{gap.issue}</div>
-                      <div className="text-sm font-medium text-blue-600">→ {gap.action}</div>
-                    </div>
+                                         <div key={index} className="p-4 border border-gray-200 rounded-md">
+                       <div className="flex items-center justify-between mb-2">
+                         <div className="font-medium text-gray-900">{gap.category}</div>
+                         <span className={`text-sm ${getImpactColor(gap.impact)}`}>
+                           {gap.impact} impact
+                         </span>
+                       </div>
+                       <div className="text-sm text-gray-600 mb-2">{gap.issue}</div>
+                       <div className="text-sm font-medium text-blue-600 mb-2">→ {gap.action}</div>
+                       
+                       {/* Show specific details */}
+                       {gap.details && (
+                         <div className="mt-3 p-3 bg-gray-50 rounded border-l-4 border-blue-500">
+                           {gap.details.missingElements && gap.details.missingElements.length > 0 && (
+                             <div className="mb-2">
+                               <span className="font-medium text-sm text-gray-700">Missing: </span>
+                               <span className="text-sm text-red-600">{gap.details.missingElements.join(', ')}</span>
+                             </div>
+                           )}
+                           
+                           {gap.details.competitorH2Topics && gap.details.competitorH2Topics.length > 0 && (
+                             <div className="mb-2">
+                               <div className="font-medium text-sm text-gray-700 mb-1">Competitor's H2 Topics:</div>
+                               <div className="text-xs text-gray-600 space-y-1">
+                                 {gap.details.competitorH2Topics.slice(0, 5).map((topic, i) => (
+                                   <div key={i} className="bg-white px-2 py-1 rounded border">"{topic}"</div>
+                                 ))}
+                               </div>
+                               {gap.details.recommendation && (
+                                 <div className="mt-2 text-sm text-green-700 font-medium">
+                                   💡 {gap.details.recommendation}
+                                 </div>
+                               )}
+                             </div>
+                           )}
+                           
+                           {gap.details.headingBreakdown && gap.details.headingBreakdown.length > 0 && (
+                             <div className="mb-2">
+                               <span className="font-medium text-sm text-gray-700">Heading gaps: </span>
+                               <span className="text-sm text-orange-600">{gap.details.headingBreakdown.join(', ')}</span>
+                             </div>
+                           )}
+                         </div>
+                       )}
+                     </div>
                   ))}
                 </div>
               </div>
