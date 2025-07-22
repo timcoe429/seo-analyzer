@@ -42,6 +42,10 @@ app.post('/api/upload-semrush', upload.single('file'), async (req, res) => {
     let parsedData = null;
     if (file.originalname.toLowerCase().endsWith('.csv')) {
       parsedData = parseCSV(file.buffer);
+      console.log(`Parsed ${file.originalname}: ${parsedData.length} rows`);
+      if (parsedData.length > 0) {
+        console.log('First row columns:', Object.keys(parsedData[0]));
+      }
     } else {
       // For PDFs, just store metadata for now
       parsedData = { type: 'pdf', filename: file.originalname, size: file.buffer.length };
@@ -49,6 +53,7 @@ app.post('/api/upload-semrush', upload.single('file'), async (req, res) => {
 
     // Determine report type from filename
     const reportType = detectReportType(file.originalname);
+    console.log(`Detected report type: ${reportType} for ${file.originalname}`);
     
     // Store data
     const targetStorage = isCompetitor === 'true' ? analysisData.competitorData : analysisData.yourData;
@@ -60,6 +65,8 @@ app.post('/api/upload-semrush', upload.single('file'), async (req, res) => {
       isCompetitor: isCompetitor === 'true',
       rowCount: Array.isArray(parsedData) ? parsedData.length : 1
     });
+
+    console.log(`Stored in ${isCompetitor === 'true' ? 'competitor' : 'your'} data:`, reportType);
 
     res.json({
       message: 'File uploaded successfully',
@@ -79,12 +86,22 @@ app.post('/api/analyze-competition', async (req, res) => {
   try {
     const { domain } = req.body;
     
+    console.log('Starting analysis for domain:', domain);
+    console.log('Your data keys:', Object.keys(analysisData.yourData));
+    console.log('Competitor data keys:', Object.keys(analysisData.competitorData));
+    
     if (!analysisData.yourData || !analysisData.competitorData) {
       return res.status(400).json({ error: 'Missing data - please upload both your files and competitor files' });
     }
 
     // Perform competitive analysis
     const analysis = performCompetitiveAnalysis(analysisData.yourData, analysisData.competitorData, domain);
+    
+    console.log('Analysis result:', {
+      actionPlanCount: analysis.actionPlan.length,
+      keywordGaps: analysis.insights.keywordGaps,
+      backlinkGaps: analysis.insights.backlinkGaps
+    });
     
     res.json(analysis);
 
@@ -211,32 +228,59 @@ function analyzeKeywordGaps(yourKeywords, competitorKeywords) {
   const actions = [];
   let gapCount = 0;
 
+  console.log('Analyzing keyword gaps...');
+  console.log('Your keywords count:', Array.isArray(yourKeywords) ? yourKeywords.length : 'not array');
+  console.log('Competitor keywords count:', Array.isArray(competitorKeywords) ? competitorKeywords.length : 'not array');
+
   if (!Array.isArray(yourKeywords) || !Array.isArray(competitorKeywords)) {
+    console.log('One of the keyword arrays is not an array');
     return { actions, gapCount };
   }
 
-  // Find keywords competitor ranks for that you don't
-  const yourKeywordSet = new Set(yourKeywords.map(k => k.Keyword?.toLowerCase() || k.keyword?.toLowerCase() || ''));
+  if (yourKeywords.length > 0) {
+    console.log('Your keywords sample columns:', Object.keys(yourKeywords[0]));
+  }
+  if (competitorKeywords.length > 0) {
+    console.log('Competitor keywords sample columns:', Object.keys(competitorKeywords[0]));
+  }
+
+  // Find keywords competitor ranks for that you don't - try multiple column name variations
+  const yourKeywordSet = new Set();
+  yourKeywords.forEach(k => {
+    const keyword = k.Keyword || k.keyword || k.Keywords || k.Query || k.query || k['Search Term'] || '';
+    if (keyword) yourKeywordSet.add(keyword.toLowerCase());
+  });
   
-  competitorKeywords.forEach(compKeyword => {
-    const keyword = compKeyword.Keyword || compKeyword.keyword || '';
-    const position = parseInt(compKeyword.Position) || parseInt(compKeyword.position) || 100;
-    const volume = parseInt(compKeyword['Search Volume']) || parseInt(compKeyword.volume) || 0;
+  competitorKeywords.forEach((compKeyword, index) => {
+    // Try different column name variations
+    const keyword = compKeyword.Keyword || compKeyword.keyword || compKeyword.Keywords || 
+                   compKeyword.Query || compKeyword.query || compKeyword['Search Term'] || '';
+    
+    const position = parseInt(compKeyword.Position) || parseInt(compKeyword.position) || 
+                    parseInt(compKeyword.Pos) || parseInt(compKeyword.pos) || 100;
+    
+    const volume = parseInt(compKeyword['Search Volume']) || parseInt(compKeyword.volume) || 
+                  parseInt(compKeyword['Vol.']) || parseInt(compKeyword.Volume) || 0;
+    
+    if (index < 3) { // Debug first few rows
+      console.log(`Row ${index}: keyword="${keyword}", position=${position}, volume=${volume}`);
+    }
     
     if (keyword && position <= 20 && volume > 100 && !yourKeywordSet.has(keyword.toLowerCase())) {
       gapCount++;
       
-      if (gapCount <= 5) { // Limit to top 5 gaps
+      if (gapCount <= 10) { // Increased to 10 gaps
         actions.push({
           priority: position <= 5 ? 'critical' : position <= 10 ? 'high' : 'medium',
           title: `Target keyword: "${keyword}"`,
-          description: `Competitor ranks #${position} for this ${volume} search/month keyword`,
+          description: `Competitor ranks #${position} for this ${volume.toLocaleString()} search/month keyword`,
           reason: `They're getting traffic you're missing. High-value keyword opportunity.`
         });
       }
     }
   });
 
+  console.log(`Found ${gapCount} keyword gaps, created ${actions.length} actions`);
   return { actions, gapCount };
 }
 
