@@ -3,19 +3,6 @@ const path = require('path');
 const cors = require('cors');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const multer = require('multer');
-const csv = require('csv-parser');
-const fs = require('fs');
-const { 
-  initializeDatabase, 
-  createProject, 
-  getProject, 
-  getAllProjects,
-  saveReport, 
-  getProjectReports,
-  saveAnalysisResult,
-  getLatestAnalysis 
-} = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -24,124 +11,13 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Configure multer for file uploads
-const storage = multer.memoryStorage();
-const upload = multer({ 
-  storage: storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'text/csv' || file.mimetype === 'application/pdf' || file.originalname.endsWith('.csv')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only CSV and PDF files are allowed'));
-    }
-  }
-});
-
-// Initialize database on startup
-initializeDatabase();
-
 // Serve static files
 app.use(express.static(path.join(__dirname, 'build')));
 
-// API Routes
-
-// Get all projects
-app.get('/api/projects', async (req, res) => {
-  try {
-    const projects = await getAllProjects();
-    res.json(projects);
-  } catch (error) {
-    console.error('Error fetching projects:', error);
-    res.status(500).json({ error: 'Failed to fetch projects' });
-  }
-});
-
-// Create new project
-app.post('/api/projects', async (req, res) => {
-  try {
-    const { name, yourDomain, competitorDomain } = req.body;
-    const project = await createProject(name, yourDomain, competitorDomain);
-    res.json(project);
-  } catch (error) {
-    console.error('Error creating project:', error);
-    res.status(500).json({ error: 'Failed to create project' });
-  }
-});
-
-// Get project details with reports
-app.get('/api/projects/:id', async (req, res) => {
-  try {
-    const projectId = req.params.id;
-    const project = await getProject(projectId);
-    const reports = await getProjectReports(projectId);
-    const latestAnalysis = await getLatestAnalysis(projectId);
-    
-    res.json({
-      project,
-      reports,
-      latestAnalysis
-    });
-  } catch (error) {
-    console.error('Error fetching project:', error);
-    res.status(500).json({ error: 'Failed to fetch project' });
-  }
-});
-
-// Upload SEMrush report
-app.post('/api/projects/:id/upload', upload.single('file'), async (req, res) => {
-  try {
-    const projectId = req.params.id;
-    const { reportType, isCompetitor } = req.body;
-    const file = req.file;
-
-    if (!file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    // Parse the file based on type
-    let parsedData = null;
-    let rawData = null;
-
-    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
-      // Parse CSV
-      rawData = file.buffer.toString('utf8');
-      parsedData = await parseCSVData(rawData, reportType);
-    } else if (file.mimetype === 'application/pdf') {
-      // For now, store PDF as base64 - we'll parse it later
-      rawData = file.buffer.toString('base64');
-      parsedData = { note: 'PDF parsing not yet implemented', fileName: file.originalname };
-    }
-
-    // Save to database
-    const report = await saveReport(
-      projectId,
-      reportType,
-      file.originalname,
-      file.mimetype === 'text/csv' ? 'csv' : 'pdf',
-      isCompetitor === 'true',
-      rawData,
-      parsedData
-    );
-
-    res.json({ 
-      success: true, 
-      report: report,
-      preview: parsedData 
-    });
-
-  } catch (error) {
-    console.error('Error uploading file:', error);
-    res.status(500).json({ error: 'Failed to upload file: ' + error.message });
-  }
-});
-
-// Enhanced analyze endpoint with SEMrush integration
+// SEO Analysis endpoint
 app.post('/api/analyze', async (req, res) => {
   try {
-    const { url, targetKeyword, competitorUrl, isPillarPost, projectId } = req.body;
+    const { url, targetKeyword, competitorUrl, isPillarPost } = req.body;
 
     if (!url || !targetKeyword) {
       return res.status(400).json({ error: 'URL and target keyword are required' });
@@ -179,35 +55,13 @@ app.post('/api/analyze', async (req, res) => {
       }
     }
 
-    // Get SEMrush insights if project provided
-    let semrushInsights = null;
-    if (projectId) {
-      semrushInsights = await getSEMrushInsights(projectId, url, competitorUrl);
-    }
-
     // Generate AI report
-    const aiReport = generateAIReport(mainAnalysis, competitorAnalysis, comparison, targetKeyword, isPillarPost, semrushInsights);
-
-    // Save analysis if project provided
-    if (projectId) {
-      await saveAnalysisResult(projectId, {
-        yourUrl: url,
-        competitorUrl: competitorUrl,
-        targetKeyword: targetKeyword,
-        isPillarPost: isPillarPost || false,
-        onpageAnalysis: mainAnalysis,
-        competitorAnalysis: competitorAnalysis,
-        comparisonResults: comparison,
-        semrushInsights: semrushInsights,
-        competitiveScore: comparison?.score || 0
-      });
-    }
+    const aiReport = generateAIReport(mainAnalysis, competitorAnalysis, comparison, targetKeyword, isPillarPost);
 
     const result = {
       analysis: mainAnalysis,
       competitor: competitorAnalysis,
       comparison: comparison,
-      semrushInsights: semrushInsights,
       aiReport: aiReport
     };
 
@@ -1065,7 +919,7 @@ function generateComparison(yourAnalysis, competitorAnalysis, targetKeyword, isP
 }
 
 // Function to generate AI-ready report for Claude/ChatGPT
-function generateAIReport(yourAnalysis, competitorAnalysis = null, comparison = null, targetKeyword, isPillarPost = false, semrushInsights = null) {
+function generateAIReport(yourAnalysis, competitorAnalysis = null, comparison = null, targetKeyword, isPillarPost = false) {
   const date = new Date().toLocaleDateString();
   
   let report = `# SEO Analysis Report - ${date}
@@ -1297,152 +1151,6 @@ Please provide specific, actionable advice and code examples where applicable.
 *Report generated by SEO Analyzer on ${date}*`;
 
   return report;
-}
-
-// Helper function to parse CSV data
-async function parseCSVData(csvString, reportType) {
-  return new Promise((resolve, reject) => {
-    const results = [];
-    const stream = require('stream');
-    const readable = new stream.Readable();
-    readable.push(csvString);
-    readable.push(null);
-
-    readable
-      .pipe(csv())
-      .on('data', (data) => results.push(data))
-      .on('end', () => {
-        // Parse based on report type
-        const parsed = processSEMrushData(results, reportType);
-        resolve(parsed);
-      })
-      .on('error', reject);
-  });
-}
-
-// Process SEMrush data based on report type
-function processSEMrushData(data, reportType) {
-  switch (reportType) {
-    case 'domain_overview':
-      return processDomainOverview(data);
-    case 'keyword_gap':
-      return processKeywordGap(data);
-    case 'backlink_gap':
-      return processBacklinkGap(data);
-    case 'organic_research':
-      return processOrganicResearch(data);
-    default:
-      return { 
-        type: reportType, 
-        rowCount: data.length, 
-        sample: data.slice(0, 5),
-        processed: false 
-      };
-  }
-}
-
-// SEMrush data processors
-function processDomainOverview(data) {
-  // Extract key metrics from domain overview
-  const metrics = data.reduce((acc, row) => {
-    if (row['Organic Keywords']) acc.organicKeywords = parseInt(row['Organic Keywords']);
-    if (row['Organic Traffic']) acc.organicTraffic = parseInt(row['Organic Traffic']);
-    if (row['Backlinks']) acc.backlinks = parseInt(row['Backlinks']);
-    if (row['Authority Score']) acc.authorityScore = parseInt(row['Authority Score']);
-    return acc;
-  }, {});
-
-  return {
-    type: 'domain_overview',
-    metrics,
-    processed: true
-  };
-}
-
-function processKeywordGap(data) {
-  const keywords = data.map(row => ({
-    keyword: row['Keyword'],
-    yourPosition: row['Your Position'] || null,
-    competitorPosition: row['Competitor Position'] || null,
-    searchVolume: parseInt(row['Search Volume']) || 0,
-    difficulty: row['Keyword Difficulty'] || null,
-    intent: row['Intent'] || null
-  }));
-
-  return {
-    type: 'keyword_gap',
-    keywords: keywords.slice(0, 100), // Limit to top 100
-    gaps: keywords.filter(k => !k.yourPosition && k.competitorPosition),
-    opportunities: keywords.filter(k => k.yourPosition > k.competitorPosition),
-    processed: true
-  };
-}
-
-function processBacklinkGap(data) {
-  return {
-    type: 'backlink_gap',
-    domains: data.map(row => ({
-      domain: row['Domain'],
-      yourBacklinks: parseInt(row['Your Backlinks']) || 0,
-      competitorBacklinks: parseInt(row['Competitor Backlinks']) || 0,
-      authorityScore: parseInt(row['Authority Score']) || 0
-    })),
-    processed: true
-  };
-}
-
-function processOrganicResearch(data) {
-  return {
-    type: 'organic_research',
-    keywords: data.map(row => ({
-      keyword: row['Keyword'],
-      position: parseInt(row['Position']) || null,
-      searchVolume: parseInt(row['Search Volume']) || 0,
-      url: row['URL'],
-      traffic: parseInt(row['Traffic']) || 0
-    })),
-    processed: true
-  };
-}
-
-// Get SEMrush insights for analysis
-async function getSEMrushInsights(projectId, yourUrl, competitorUrl) {
-  try {
-    const reports = await getProjectReports(projectId);
-    
-    const insights = {
-      domainMetrics: null,
-      keywordGaps: null,
-      backlinkGaps: null,
-      competitiveAdvantages: []
-    };
-
-    // Process domain overview reports
-    const domainReports = reports.filter(r => r.report_type === 'domain_overview');
-    if (domainReports.length > 0) {
-      insights.domainMetrics = domainReports.map(r => ({
-        isCompetitor: r.is_competitor,
-        data: r.parsed_data
-      }));
-    }
-
-    // Process keyword gap reports
-    const keywordReports = reports.filter(r => r.report_type === 'keyword_gap');
-    if (keywordReports.length > 0) {
-      insights.keywordGaps = keywordReports[0].parsed_data;
-    }
-
-    // Process backlink gap reports
-    const backlinkReports = reports.filter(r => r.report_type === 'backlink_gap');
-    if (backlinkReports.length > 0) {
-      insights.backlinkGaps = backlinkReports[0].parsed_data;
-    }
-
-    return insights;
-  } catch (error) {
-    console.error('Error getting SEMrush insights:', error);
-    return null;
-  }
 }
 
  // Serve React app for all other routes
