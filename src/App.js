@@ -366,72 +366,157 @@ function PhaseBAnalysis() {
         </div>
       )}
 
-      {/* Results Display */}
+      {/* Phase B Results */}
       {analysisResults && (
-        <div className="mt-6 bg-white rounded-lg shadow-md p-6 border-2 border-green-200">
-          <h3 className="text-xl font-semibold mb-4 text-green-900">🎯 Real Competitive Analysis Results</h3>
+        <div className="mt-8">
+          <h3 className="text-xl font-bold text-gray-900 mb-6">🎯 Competitive Analysis Results</h3>
           
-          {/* Summary */}
-          <div className="mb-6 p-4 bg-green-50 rounded-md">
-            <p className="text-green-800 font-medium">{analysisResults.summary}</p>
+          {/* Summary Section */}
+          <div className="bg-gradient-to-r from-blue-50 to-green-50 rounded-lg p-6 mb-6 border">
+            <h4 className="font-semibold text-gray-900 mb-3">📊 Analysis Summary</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-red-600">{analysisResults.summary?.keywordGaps || 0}</div>
+                <div className="text-sm text-gray-600">Keyword Gaps</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-600">{analysisResults.summary?.backlinkGaps || 0}</div>
+                <div className="text-sm text-gray-600">Backlink Gaps</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{analysisResults.summary?.competitiveScore || 0}</div>
+                <div className="text-sm text-gray-600">Competitive Score</div>
+              </div>
+            </div>
           </div>
 
-          {/* Key Insights */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <h4 className="font-semibold text-red-900 mb-2">Keyword Gaps</h4>
-              <div className="text-2xl font-bold text-red-900">{analysisResults.insights.keywordGaps}</div>
-              <div className="text-sm text-red-700">Keywords where competitor beats you</div>
+          {/* WHY Analysis Section */}
+          {analysisResults.whyAnalysis && analysisResults.whyAnalysis.length > 0 && (
+            <div className="bg-red-50 rounded-lg p-6 mb-6 border-2 border-red-200">
+              <h4 className="font-semibold text-red-900 mb-4 flex items-center">
+                <AlertCircle className="w-5 h-5 mr-2" />
+                🔍 WHY They're Winning (Root Cause Analysis)
+              </h4>
+              <div className="space-y-3">
+                {analysisResults.whyAnalysis.map((why, index) => (
+                  <div key={index} className="bg-white rounded p-4 border-l-4 border-red-400">
+                    <div className="font-medium text-red-800">{why.reason}</div>
+                    <div className="text-sm text-red-600 mt-1">{why.impact}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-            
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-              <h4 className="font-semibold text-orange-900 mb-2">Backlink Opportunities</h4>
-              <div className="text-2xl font-bold text-orange-900">{analysisResults.insights.backlinkGaps}</div>
-              <div className="text-sm text-orange-700">Domains linking to them, not you</div>
+          )}
+
+          {/* Domain Comparison */}
+          {analysisResults.domainComparison && (
+            <div className="bg-yellow-50 rounded-lg p-6 mb-6 border-2 border-yellow-200">
+              <h4 className="font-semibold text-yellow-900 mb-4">⚖️ Domain Authority Comparison</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded p-4">
+                  <h5 className="font-medium text-gray-900 mb-2">Your Domain</h5>
+                  <div className="space-y-1 text-sm">
+                    {analysisResults.domainComparison.yourMetrics.authorityScore && (
+                      <div>Authority Score: <span className="font-medium">{analysisResults.domainComparison.yourMetrics.authorityScore}</span></div>
+                    )}
+                    {analysisResults.domainComparison.yourMetrics.organicTraffic && (
+                      <div>Monthly Traffic: <span className="font-medium">{analysisResults.domainComparison.yourMetrics.organicTraffic.toLocaleString()}</span></div>
+                    )}
+                    {analysisResults.domainComparison.yourMetrics.totalBacklinks && (
+                      <div>Backlinks: <span className="font-medium">{analysisResults.domainComparison.yourMetrics.totalBacklinks.toLocaleString()}</span></div>
+                    )}
+                  </div>
+                </div>
+                <div className="bg-white rounded p-4">
+                  <h5 className="font-medium text-gray-900 mb-2">Competitor Domain</h5>
+                  <div className="space-y-1 text-sm">
+                    {analysisResults.domainComparison.competitorMetrics.authorityScore && (
+                      <div>Authority Score: <span className="font-medium">{analysisResults.domainComparison.competitorMetrics.authorityScore}</span></div>
+                    )}
+                    {analysisResults.domainComparison.competitorMetrics.organicTraffic && (
+                      <div>Monthly Traffic: <span className="font-medium">{analysisResults.domainComparison.competitorMetrics.organicTraffic.toLocaleString()}</span></div>
+                    )}
+                    {analysisResults.domainComparison.competitorMetrics.totalBacklinks && (
+                      <div>Backlinks: <span className="font-medium">{analysisResults.domainComparison.competitorMetrics.totalBacklinks.toLocaleString()}</span></div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-            
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-semibold text-blue-900 mb-2">Competitive Score</h4>
-              <div className="text-2xl font-bold text-blue-900">{analysisResults.insights.competitiveScore}/100</div>
-              <div className="text-sm text-blue-700">Your competitive position</div>
+          )}
+
+          {/* Keyword Analysis Section */}
+          {analysisResults.keywordAnalysis && (
+            <div className="bg-purple-50 rounded-lg p-6 mb-6 border-2 border-purple-200">
+              <h4 className="font-semibold text-purple-900 mb-4">🔑 Keyword Gap Analysis</h4>
+              <div className="text-sm text-purple-700 mb-3">
+                Found {analysisResults.keywordAnalysis.gapCount} keyword opportunities where competitor ranks better.
+              </div>
+              {analysisResults.keywordAnalysis.actions && analysisResults.keywordAnalysis.actions.length > 0 && (
+                <div className="space-y-2">
+                  {analysisResults.keywordAnalysis.actions.slice(0, 5).map((action, index) => (
+                    <div key={index} className="bg-white rounded p-3 border-l-4 border-purple-400">
+                      <div className="font-medium text-purple-800">{action.title}</div>
+                      <div className="text-sm text-purple-600">{action.description}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* Backlink Analysis Section */}
+          {analysisResults.backlinkAnalysis && (
+            <div className="bg-green-50 rounded-lg p-6 mb-6 border-2 border-green-200">
+              <h4 className="font-semibold text-green-900 mb-4">🔗 Backlink Gap Analysis</h4>
+              <div className="text-sm text-green-700 mb-3">
+                Found {analysisResults.backlinkAnalysis.gapCount} backlink opportunities from high-authority domains.
+              </div>
+              {analysisResults.backlinkAnalysis.actions && analysisResults.backlinkAnalysis.actions.length > 0 && (
+                <div className="space-y-2">
+                  {analysisResults.backlinkAnalysis.actions.slice(0, 5).map((action, index) => (
+                    <div key={index} className="bg-white rounded p-3 border-l-4 border-green-400">
+                      <div className="font-medium text-green-800">{action.title}</div>
+                      <div className="text-sm text-green-600">{action.description}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Action Plan */}
-          <div>
-            <h4 className="font-semibold text-gray-900 mb-4">🎯 Action Plan to Beat Competition</h4>
-            <div className="space-y-3">
-              {analysisResults.actionPlan.map((action, index) => (
-                <div key={index} className={`p-4 rounded-lg border-l-4 ${
-                  action.priority === 'critical' ? 'bg-red-50 border-red-500' :
-                  action.priority === 'high' ? 'bg-orange-50 border-orange-500' :
-                  'bg-yellow-50 border-yellow-500'
-                }`}>
-                  <div className="font-semibold text-gray-900 flex items-center">
-                    <span className={`inline-block w-3 h-3 rounded-full mr-2 ${
-                      action.priority === 'critical' ? 'bg-red-500' :
-                      action.priority === 'high' ? 'bg-orange-500' : 'bg-yellow-500'
-                    }`}></span>
-                    {action.title}
-                  </div>
-                  <div className="text-gray-700 mt-1">{action.description}</div>
-                  <div className="text-sm text-gray-600 mt-2">
-                    <strong>Why:</strong> {action.reason}
-                  </div>
-                  {action.keyword && (
-                    <div className="text-xs text-gray-500 mt-1">
-                      Keyword: {action.keyword} | Gap: {action.gap} positions | Volume: {action.volume?.toLocaleString()}
+          {analysisResults.actionPlan && analysisResults.actionPlan.length > 0 && (
+            <div className="bg-gray-50 rounded-lg p-6 border">
+              <h4 className="font-semibold text-gray-900 mb-4">📋 Priority Action Plan</h4>
+              <div className="space-y-3">
+                {analysisResults.actionPlan.slice(0, 10).map((action, index) => (
+                  <div key={index} className={`p-4 rounded border-l-4 ${
+                    action.priority === 'critical' ? 'bg-red-50 border-red-400' :
+                    action.priority === 'high' ? 'bg-orange-50 border-orange-400' :
+                    'bg-blue-50 border-blue-400'
+                  }`}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">{action.title}</div>
+                        <div className="text-sm text-gray-600 mt-1">{action.description}</div>
+                        {action.reason && (
+                          <div className="text-xs text-gray-500 mt-2">{action.reason}</div>
+                        )}
+                      </div>
+                      <span className={`px-2 py-1 text-xs rounded ${
+                        action.priority === 'critical' ? 'bg-red-100 text-red-800' :
+                        action.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                        'bg-blue-100 text-blue-800'
+                      }`}>
+                        {action.priority}
+                      </span>
                     </div>
-                  )}
-                  {action.domain && (
-                    <div className="text-xs text-gray-500 mt-1">
-                      Domain: {action.domain} | Authority: {action.domainAuthority} | Their links: {action.competitorBacklinks}
-                    </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 

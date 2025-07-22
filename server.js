@@ -1,7 +1,10 @@
 const express = require('express');
-const path = require('path');
 const cors = require('cors');
 const multer = require('multer');
+const csv = require('csv-parser');
+const path = require('path');
+const fs = require('fs');
+const pdfParse = require('pdf-parse');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -67,8 +70,29 @@ app.post('/api/discover-data', upload.single('file'), async (req, res) => {
         result.error = 'No data found in CSV file';
       }
     } else if (file.originalname.toLowerCase().endsWith('.pdf')) {
-      result.message = 'PDF detected - content parsing not implemented yet';
-      result.base64Preview = file.buffer.toString('base64').substring(0, 100) + '...';
+      try {
+        console.log(`Parsing PDF: ${file.originalname}`);
+        const pdfData = await pdfParse(file.buffer);
+        
+        result.content = {
+          text: pdfData.text,
+          pages: pdfData.numpages,
+          info: pdfData.info,
+          textLength: pdfData.text.length
+        };
+        
+        // Extract key metrics from domain overview PDFs
+        const metrics = extractDomainMetrics(pdfData.text);
+        if (metrics) {
+          result.domainMetrics = metrics;
+        }
+        
+        console.log(`PDF parsed successfully: ${pdfData.numpages} pages, ${pdfData.text.length} characters`);
+      } catch (error) {
+        console.error('PDF parsing error:', error);
+        result.message = 'PDF parsing failed: ' + error.message;
+        result.base64Preview = file.buffer.toString('base64').substring(0, 100) + '...';
+      }
     } else {
       result.error = 'Unsupported file type. Please upload CSV or PDF files.';
     }
@@ -158,6 +182,8 @@ app.post('/api/analyze-competition-real', upload.array('files'), async (req, res
     let keywordGapData = null;
     let backlinkGapData = null;
     let backlinkData = null;
+    let yourDomainMetrics = null;
+    let competitorDomainMetrics = null;
 
     // Parse all uploaded files and identify types
     for (const file of files) {
@@ -175,10 +201,35 @@ app.post('/api/analyze-competition-real', upload.array('files'), async (req, res
           backlinkData = parsedData;
           console.log('Found backlink data');
         }
+      } else if (file.originalname.toLowerCase().endsWith('.pdf')) {
+        try {
+          const pdfData = await pdfParse(file.buffer);
+          const metrics = extractDomainMetrics(pdfData.text);
+          
+          if (metrics) {
+            // Determine if this is your domain or competitor based on filename
+            if (file.originalname.toLowerCase().includes('competitor') || 
+                file.originalname.toLowerCase().includes('tank-track')) {
+              competitorDomainMetrics = { ...metrics, filename: file.originalname };
+              console.log('Found competitor domain metrics');
+            } else {
+              yourDomainMetrics = { ...metrics, filename: file.originalname };
+              console.log('Found your domain metrics');
+            }
+          }
+        } catch (error) {
+          console.error('PDF parsing error:', error);
+        }
       }
     }
 
-    const analysis = performRealCompetitiveAnalysis(keywordGapData, backlinkGapData, backlinkData);
+    const analysis = performRealCompetitiveAnalysis(
+      keywordGapData, 
+      backlinkGapData, 
+      backlinkData, 
+      yourDomainMetrics, 
+      competitorDomainMetrics
+    );
     res.json(analysis);
 
   } catch (error) {
@@ -188,46 +239,153 @@ app.post('/api/analyze-competition-real', upload.array('files'), async (req, res
 });
 
 // NEW: Real competitive analysis using actual SEMRush column structures
-function performRealCompetitiveAnalysis(keywordGapData, backlinkGapData, backlinkData) {
-  const actionPlan = [];
-  const insights = {
-    keywordGaps: 0,
-    backlinkGaps: 0,
-    competitiveScore: 50
+function performRealCompetitiveAnalysis(keywordGapData, backlinkGapData, backlinkData, yourDomainMetrics, competitorDomainMetrics) {
+  console.log('Starting real competitive analysis...');
+
+  const analysis = {
+    summary: {
+      keywordGaps: 0,
+      backlinkGaps: 0,
+      competitiveScore: 50,
+      criticalFindings: []
+    },
+    keywordAnalysis: null,
+    backlinkAnalysis: null,
+    domainComparison: null,
+    whyAnalysis: [],
+    actionPlan: []
   };
 
-  console.log('Starting real competitive analysis...');
+  // Analyze Domain Comparison (WHY they're winning)
+  if (yourDomainMetrics && competitorDomainMetrics) {
+    console.log('Analyzing domain metrics comparison...');
+    analysis.domainComparison = analyzeDomainComparison(yourDomainMetrics, competitorDomainMetrics);
+    analysis.whyAnalysis.push(...analysis.domainComparison.whyReasons);
+  }
 
   // Analyze Keyword Gaps using REAL column names
   if (keywordGapData && keywordGapData.length > 0) {
     console.log('Analyzing keyword gaps with real data...');
-    const keywordAnalysis = analyzeRealKeywordGaps(keywordGapData);
-    actionPlan.push(...keywordAnalysis.actions);
-    insights.keywordGaps = keywordAnalysis.gapCount;
+    analysis.keywordAnalysis = analyzeRealKeywordGaps(keywordGapData);
+    analysis.summary.keywordGaps = analysis.keywordAnalysis.gapCount;
+    analysis.actionPlan.push(...analysis.keywordAnalysis.actions);
   }
 
   // Analyze Backlink Gaps using REAL column names  
   if (backlinkGapData && backlinkGapData.length > 0) {
     console.log('Analyzing backlink gaps with real data...');
-    const backlinkAnalysis = analyzeRealBacklinkGaps(backlinkGapData);
-    actionPlan.push(...backlinkAnalysis.actions);
-    insights.backlinkGaps = backlinkAnalysis.gapCount;
+    analysis.backlinkAnalysis = analyzeRealBacklinkGaps(backlinkGapData);
+    analysis.summary.backlinkGaps = analysis.backlinkAnalysis.gapCount;
+    analysis.actionPlan.push(...analysis.backlinkAnalysis.actions);
   }
 
   // Calculate competitive score based on gaps found
-  insights.competitiveScore = calculateRealCompetitiveScore(insights.keywordGaps, insights.backlinkGaps);
+  analysis.summary.competitiveScore = calculateRealCompetitiveScore(
+    analysis.summary.keywordGaps, 
+    analysis.summary.backlinkGaps,
+    analysis.domainComparison
+  );
 
   // Sort actions by priority
-  actionPlan.sort((a, b) => {
+  analysis.actionPlan.sort((a, b) => {
     const priorityOrder = { critical: 3, high: 2, medium: 1 };
     return priorityOrder[b.priority] - priorityOrder[a.priority];
   });
 
-  return {
-    actionPlan: actionPlan.slice(0, 15), // Top 15 actions
-    insights,
-    summary: `Found ${actionPlan.length} real optimization opportunities using actual SEMRush data structures`
+  return analysis;
+}
+
+// NEW: Domain comparison analysis - explains WHY competitor is winning
+function analyzeDomainComparison(yourMetrics, competitorMetrics) {
+  const comparison = {
+    yourMetrics: yourMetrics,
+    competitorMetrics: competitorMetrics,
+    gaps: [],
+    whyReasons: [],
+    advantages: []
   };
+
+  console.log('=== DOMAIN COMPARISON ANALYSIS ===');
+  console.log('Your metrics:', yourMetrics);
+  console.log('Competitor metrics:', competitorMetrics);
+
+  // Compare Authority Score
+  if (competitorMetrics.authorityScore && yourMetrics.authorityScore) {
+    const gap = competitorMetrics.authorityScore - yourMetrics.authorityScore;
+    if (gap > 0) {
+      comparison.gaps.push({
+        metric: 'Authority Score',
+        yourValue: yourMetrics.authorityScore,
+        competitorValue: competitorMetrics.authorityScore,
+        gap: gap,
+        impact: 'high'
+      });
+      comparison.whyReasons.push({
+        reason: `Higher Domain Authority (${competitorMetrics.authorityScore} vs ${yourMetrics.authorityScore})`,
+        impact: 'Stronger domain authority directly impacts ranking ability',
+        type: 'authority'
+      });
+    }
+  }
+
+  // Compare Organic Traffic
+  if (competitorMetrics.organicTraffic && yourMetrics.organicTraffic) {
+    const gap = competitorMetrics.organicTraffic - yourMetrics.organicTraffic;
+    if (gap > 0) {
+      comparison.gaps.push({
+        metric: 'Organic Traffic',
+        yourValue: yourMetrics.organicTraffic,
+        competitorValue: competitorMetrics.organicTraffic,
+        gap: gap,
+        impact: 'high'
+      });
+      comparison.whyReasons.push({
+        reason: `Higher organic traffic (${competitorMetrics.organicTraffic.toLocaleString()} vs ${yourMetrics.organicTraffic.toLocaleString()})`,
+        impact: 'More traffic indicates better SEO performance and user engagement',
+        type: 'traffic'
+      });
+    }
+  }
+
+  // Compare Backlinks
+  if (competitorMetrics.totalBacklinks && yourMetrics.totalBacklinks) {
+    const gap = competitorMetrics.totalBacklinks - yourMetrics.totalBacklinks;
+    if (gap > 0) {
+      comparison.gaps.push({
+        metric: 'Total Backlinks',
+        yourValue: yourMetrics.totalBacklinks,
+        competitorValue: competitorMetrics.totalBacklinks,
+        gap: gap,
+        impact: 'high'
+      });
+      comparison.whyReasons.push({
+        reason: `More backlinks (${competitorMetrics.totalBacklinks.toLocaleString()} vs ${yourMetrics.totalBacklinks.toLocaleString()})`,
+        impact: 'Backlinks are a primary ranking factor for search engines',
+        type: 'backlinks'
+      });
+    }
+  }
+
+  // Compare Referring Domains
+  if (competitorMetrics.referringDomains && yourMetrics.referringDomains) {
+    const gap = competitorMetrics.referringDomains - yourMetrics.referringDomains;
+    if (gap > 0) {
+      comparison.gaps.push({
+        metric: 'Referring Domains',
+        yourValue: yourMetrics.referringDomains,
+        competitorValue: competitorMetrics.referringDomains,
+        gap: gap,
+        impact: 'high'
+      });
+      comparison.whyReasons.push({
+        reason: `More referring domains (${competitorMetrics.referringDomains.toLocaleString()} vs ${yourMetrics.referringDomains.toLocaleString()})`,
+        impact: 'Domain diversity in backlink profile strengthens overall authority',
+        type: 'domains'
+      });
+    }
+  }
+
+  return comparison;
 }
 
 // NEW: Analyze keyword gaps using REAL column names from Phase A discovery
@@ -369,7 +527,7 @@ function analyzeRealBacklinkGaps(backlinkGapData) {
 }
 
 // NEW: Calculate competitive score based on real gaps found
-function calculateRealCompetitiveScore(keywordGaps, backlinkGaps) {
+function calculateRealCompetitiveScore(keywordGaps, backlinkGaps, domainComparison) {
   let score = 50; // Start neutral
   
   // Keyword gaps impact (more gaps = lower score)
@@ -382,58 +540,106 @@ function calculateRealCompetitiveScore(keywordGaps, backlinkGaps) {
   else if (backlinkGaps > 20) score -= 10;
   else if (backlinkGaps < 10) score += 5;
   
+  // Domain authority impact (most important)
+  if (domainComparison && domainComparison.gaps) {
+    domainComparison.gaps.forEach(gap => {
+      if (gap.metric === 'Authority Score') {
+        if (gap.gap > 20) score -= 25;
+        else if (gap.gap > 10) score -= 15;
+        else if (gap.gap > 5) score -= 10;
+      }
+    });
+  }
+  
   return Math.max(0, Math.min(100, score));
 }
 
-// Helper function to parse CSV
+// Utility function to parse CSV from buffer
 function parseCSV(buffer) {
-  try {
-    const csvString = buffer.toString('utf8');
-    const lines = csvString.split('\n').filter(line => line.trim());
-    
-    if (lines.length === 0) return [];
-    
-    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-    const data = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const values = parseCSVLine(lines[i]);
-      if (values.length === headers.length) {
-        const row = {};
-        headers.forEach((header, index) => {
-          row[header] = values[index] || '';
-        });
-        data.push(row);
-      }
+  const csvString = buffer.toString();
+  const lines = csvString.split('\n');
+  
+  if (lines.length === 0) return [];
+  
+  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+  const data = [];
+  
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim()) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+      const row = {};
+      headers.forEach((header, index) => {
+        row[header] = values[index] || '';
+      });
+      data.push(row);
     }
-    
-    return data;
-  } catch (error) {
-    console.error('CSV parsing error:', error);
-    return [];
   }
+  
+  return data;
 }
 
-function parseCSVLine(line) {
-  const values = [];
-  let current = '';
-  let inQuotes = false;
-  
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    
-    if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === ',' && !inQuotes) {
-      values.push(current.trim());
-      current = '';
-    } else {
-      current += char;
+// Extract key domain metrics from PDF text (SEMRush domain overview reports)
+function extractDomainMetrics(pdfText) {
+  try {
+    const text = pdfText.toLowerCase();
+    const metrics = {};
+
+    // Extract Authority Score (Domain Authority)
+    const authorityMatch = text.match(/authority score[:\s]*(\d+)/i) || 
+                          text.match(/domain authority[:\s]*(\d+)/i) ||
+                          text.match(/as[:\s]*(\d+)/i);
+    if (authorityMatch) {
+      metrics.authorityScore = parseInt(authorityMatch[1]);
     }
+
+    // Extract Organic Traffic
+    const trafficMatches = [
+      text.match(/organic traffic[:\s]*([0-9,]+)/i),
+      text.match(/monthly traffic[:\s]*([0-9,]+)/i),
+      text.match(/traffic[:\s]*([0-9,]+)/i)
+    ];
+    
+    for (const match of trafficMatches) {
+      if (match) {
+        metrics.organicTraffic = parseInt(match[1].replace(/,/g, ''));
+        break;
+      }
+    }
+
+    // Extract Backlinks
+    const backlinkMatch = text.match(/backlinks[:\s]*([0-9,]+)/i) ||
+                         text.match(/total backlinks[:\s]*([0-9,]+)/i);
+    if (backlinkMatch) {
+      metrics.totalBacklinks = parseInt(backlinkMatch[1].replace(/,/g, ''));
+    }
+
+    // Extract Referring Domains
+    const referringMatch = text.match(/referring domains[:\s]*([0-9,]+)/i) ||
+                          text.match(/ref\. domains[:\s]*([0-9,]+)/i);
+    if (referringMatch) {
+      metrics.referringDomains = parseInt(referringMatch[1].replace(/,/g, ''));
+    }
+
+    // Extract Organic Keywords
+    const keywordMatch = text.match(/organic keywords[:\s]*([0-9,]+)/i) ||
+                        text.match(/keywords[:\s]*([0-9,]+)/i);
+    if (keywordMatch) {
+      metrics.organicKeywords = parseInt(keywordMatch[1].replace(/,/g, ''));
+    }
+
+    // Extract Traffic Value
+    const valueMatch = text.match(/traffic value[:\s]*\$([0-9,]+)/i) ||
+                      text.match(/organic traffic value[:\s]*\$([0-9,]+)/i);
+    if (valueMatch) {
+      metrics.trafficValue = parseInt(valueMatch[1].replace(/,/g, ''));
+    }
+
+    console.log('Extracted metrics from PDF:', metrics);
+    return Object.keys(metrics).length > 0 ? metrics : null;
+  } catch (error) {
+    console.error('Error extracting domain metrics:', error);
+    return null;
   }
-  
-  values.push(current.trim());
-  return values;
 }
 
 // Detect report type from filename
