@@ -5,7 +5,16 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const multer = require('multer');
 const csv = require('csv-parser');
-const { query } = require('./database');
+// Only require database if DATABASE_URL is set
+let query = null;
+if (process.env.DATABASE_URL) {
+  try {
+    const database = require('./database');
+    query = database.query;
+  } catch (err) {
+    console.log('Database not available, running without database features');
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -1166,6 +1175,9 @@ Please provide specific, actionable advice and code examples where applicable.
 
 // Project management endpoints
 app.get('/api/projects', async (req, res) => {
+  if (!query) {
+    return res.status(503).json({ error: 'Database not available' });
+  }
   try {
     const result = await query('SELECT * FROM projects ORDER BY updated_at DESC');
     res.json(result.rows);
@@ -1176,6 +1188,9 @@ app.get('/api/projects', async (req, res) => {
 });
 
 app.post('/api/projects', async (req, res) => {
+  if (!query) {
+    return res.status(503).json({ error: 'Database not available' });
+  }
   try {
     const { name, domain } = req.body;
     if (!name || !domain) {
@@ -1194,6 +1209,9 @@ app.post('/api/projects', async (req, res) => {
 });
 
 app.get('/api/projects/:id', async (req, res) => {
+  if (!query) {
+    return res.status(503).json({ error: 'Database not available' });
+  }
   try {
     const projectId = req.params.id;
     
@@ -1228,6 +1246,9 @@ app.get('/api/projects/:id', async (req, res) => {
 
 // File upload endpoint
 app.post('/api/projects/:id/upload', upload.single('file'), async (req, res) => {
+  if (!query) {
+    return res.status(503).json({ error: 'Database not available' });
+  }
   try {
     const projectId = req.params.id;
     const { reportType, isCompetitor } = req.body;
@@ -1293,6 +1314,9 @@ app.post('/api/projects/:id/upload', upload.single('file'), async (req, res) => 
 
 // Enhanced analyze endpoint with project storage
 app.post('/api/projects/:id/analyze', async (req, res) => {
+  if (!query) {
+    return res.status(503).json({ error: 'Database not available' });
+  }
   try {
     const projectId = req.params.id;
     const { url, targetKeyword, competitorUrl, isPillarPost } = req.body;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, AlertCircle, CheckCircle, XCircle, ExternalLink, Copy, Users, Target, File, Plus, Upload, Folder, Calendar, BarChart3, X } from 'lucide-react';
+import { Search, AlertCircle, CheckCircle, XCircle, Plus, Upload, Folder, BarChart3, X, Users, Target, File } from 'lucide-react';
 import './App.css';
 
 function App() {
@@ -18,7 +18,7 @@ function App() {
   const [results, setResults] = useState(null);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('analysis');
-  const [copySuccess, setCopySuccess] = useState(false);
+
 
   // Project form state
   const [newProjectName, setNewProjectName] = useState('');
@@ -32,25 +32,27 @@ function App() {
 
   // Load projects on component mount
   useEffect(() => {
-    loadProjects();
-  }, []);
-
-  const loadProjects = async () => {
-    try {
-      const response = await fetch('/api/projects');
-      if (response.ok) {
-        const projectsData = await response.json();
-        setProjects(projectsData);
-        
-        // Auto-select first project if available
-        if (projectsData.length > 0 && !currentProject) {
-          setCurrentProject(projectsData[0]);
+    const fetchProjects = async () => {
+      try {
+        const response = await fetch('/api/projects');
+        if (response.ok) {
+          const projectsData = await response.json();
+          setProjects(projectsData);
+          
+          // Auto-select first project if available
+          if (projectsData.length > 0 && !currentProject) {
+            setCurrentProject(projectsData[0]);
+          }
         }
+      } catch (error) {
+        console.error('Failed to load projects:', error);
       }
-    } catch (error) {
-      console.error('Failed to load projects:', error);
-    }
-  };
+    };
+    
+    fetchProjects();
+  }, [currentProject]);
+
+
 
   const createProject = async () => {
     if (!newProjectName || !newProjectDomain) {
@@ -164,7 +166,7 @@ function App() {
       
       setResults(data);
       
-      if (data.comparison) {
+      if (data && data.comparison) {
         setActiveTab('comparison');
       }
     } catch (error) {
@@ -175,17 +177,7 @@ function App() {
     }
   };
 
-  const copyAIReport = async () => {
-    if (results?.aiReport) {
-      try {
-        await navigator.clipboard.writeText(results.aiReport);
-        setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 2000);
-      } catch (err) {
-        console.error('Failed to copy:', err);
-      }
-    }
-  };
+
 
   const getIssueIcon = (type) => {
     switch (type) {
@@ -197,27 +189,7 @@ function App() {
     }
   };
 
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'critical': return 'bg-red-100 text-red-800 border-red-200';
-      case 'high': return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'low': return 'bg-green-100 text-green-800 border-green-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  const getImpactColor = (impact) => {
-    switch (impact) {
-      case 'high': return 'text-red-600 font-semibold';
-      case 'medium': return 'text-orange-600 font-medium';
-      case 'low': return 'text-green-600';
-      default: return 'text-gray-600';
-    }
-  };
-
   const analysis = results?.analysis;
-  const comparison = results?.comparison;
 
   return (
     <div className="max-w-6xl mx-auto p-6 bg-white min-h-screen">
@@ -376,7 +348,7 @@ function App() {
                 </div>
               </button>
               
-              {comparison && (
+              {results?.comparison && (
                 <button
                   onClick={() => setActiveTab('comparison')}
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
@@ -469,32 +441,58 @@ function App() {
             </div>
           )}
 
-          {/* Tab Content - SEMRush */}
-          {activeTab === 'semrush' && (
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">SEMRush Integration</h3>
-              {currentProject ? (
-                <div className="text-center py-8">
-                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">
-                    Upload your SEMRush reports to enhance analysis with competitive intelligence
-                  </p>
-                  <button
-                    onClick={() => setShowUploadModal(true)}
-                    className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700"
-                  >
-                    Upload SEMRush File
-                  </button>
-                </div>
-              ) : (
-                <p className="text-gray-600 text-center py-8">
-                  Please select a project to manage SEMRush data
-                </p>
-              )}
-            </div>
-          )}
+                     {/* Tab Content - Comparison */}
+           {activeTab === 'comparison' && results?.comparison && (
+             <div className="bg-white border border-gray-200 rounded-lg p-6">
+               <h3 className="text-lg font-semibold text-gray-900 mb-4">Competitor Comparison</h3>
+               <div className="text-center py-8">
+                 <div className="text-3xl font-bold text-gray-900 mb-2">
+                   {results.comparison.competitiveScore || 'N/A'}/100
+                 </div>
+                 <p className="text-gray-600">Competitive Score</p>
+                 <p className="text-sm text-gray-500 mt-4">
+                   Detailed competitive analysis will be displayed here
+                 </p>
+               </div>
+             </div>
+           )}
 
-          {/* Rest of existing tab content for comparison and report... */}
+           {/* Tab Content - AI Report */}
+           {activeTab === 'report' && results?.aiReport && (
+             <div className="bg-white border border-gray-200 rounded-lg p-6">
+               <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Report</h3>
+               <div className="bg-gray-50 p-4 rounded-md border max-h-96 overflow-y-auto">
+                 <pre className="text-sm whitespace-pre-wrap">
+                   {results.aiReport}
+                 </pre>
+               </div>
+             </div>
+           )}
+
+           {/* Tab Content - SEMRush */}
+           {activeTab === 'semrush' && (
+             <div className="bg-white border border-gray-200 rounded-lg p-6">
+               <h3 className="text-lg font-semibold text-gray-900 mb-4">SEMRush Integration</h3>
+               {currentProject ? (
+                 <div className="text-center py-8">
+                   <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                   <p className="text-gray-600 mb-4">
+                     Upload your SEMRush reports to enhance analysis with competitive intelligence
+                   </p>
+                   <button
+                     onClick={() => setShowUploadModal(true)}
+                     className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700"
+                   >
+                     Upload SEMRush File
+                   </button>
+                 </div>
+               ) : (
+                 <p className="text-gray-600 text-center py-8">
+                   Please select a project to manage SEMRush data
+                 </p>
+               )}
+             </div>
+           )}
         </div>
       )}
 
