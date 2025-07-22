@@ -510,52 +510,82 @@ function App() {
             </nav>
           </div>
 
-          {/* Tab Content - Analysis */}
-          {activeTab === 'analysis' && analysis && (
-            <div className="space-y-6">
-              {/* Rest of analysis display code remains the same... */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Summary Card */}
-                <div className="bg-white border border-gray-200 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Analysis Summary</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Overall Score:</span>
-                      <span className="font-semibold text-lg">{analysis.summary?.overallScore || 'N/A'}/100</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Word Count:</span>
-                      <span className="font-medium">{analysis.content?.wordCount || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Reading Score:</span>
-                      <span className="font-medium">{analysis.content?.readabilityScore || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Issues Found:</span>
-                      <span className="font-medium">{analysis.issues?.length || 0}</span>
-                    </div>
-                  </div>
-                </div>
+                     {/* Tab Content - Analysis */}
+           {activeTab === 'analysis' && analysis && (
+             <div className="space-y-6">
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                 {/* Summary Card */}
+                 <div className="bg-white border border-gray-200 rounded-lg p-6">
+                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Analysis Summary</h3>
+                   <div className="space-y-3">
+                     <div className="flex justify-between">
+                       <span className="text-gray-600">Overall Score:</span>
+                       <span className="font-semibold text-lg">{analysis.summary?.overallScore || 'N/A'}/100</span>
+                     </div>
+                     <div className="flex justify-between">
+                       <span className="text-gray-600">Word Count:</span>
+                       <span className="font-medium">{analysis.content?.wordCount || 0}</span>
+                     </div>
+                     <div className="flex justify-between">
+                       <span className="text-gray-600">Reading Score:</span>
+                       <span className="font-medium">{analysis.content?.readabilityScore || 'N/A'}</span>
+                     </div>
+                     <div className="flex justify-between">
+                       <span className="text-gray-600">Issues Found:</span>
+                       <span className="font-medium">{analysis.issues?.length || 0}</span>
+                     </div>
+                   </div>
+                 </div>
 
-                {/* Quick Issues */}
-                <div className="bg-white border border-gray-200 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Issues</h3>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {analysis.issues?.slice(0, 5).map((issue, index) => (
-                      <div key={index} className="flex items-start gap-2 p-2 bg-gray-50 rounded">
-                        {getIssueIcon(issue.type)}
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium text-gray-900">{issue.title}</div>
-                          <div className="text-xs text-gray-600">{issue.description}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+                 {/* SEMRush Insights or Issues */}
+                 <div className="bg-white border border-gray-200 rounded-lg p-6">
+                   {projectData?.reports && projectData.reports.length > 0 ? (
+                     <div>
+                       <h3 className="text-lg font-semibold text-gray-900 mb-4">SEMRush Insights</h3>
+                       <div className="space-y-3">
+                         <div className="flex justify-between">
+                           <span className="text-gray-600">Reports Available:</span>
+                           <span className="font-medium">{projectData.reports.length}</span>
+                         </div>
+                         <div className="flex justify-between">
+                           <span className="text-gray-600">Keyword Data:</span>
+                           <span className="font-medium">
+                             {projectData.reports.filter(r => r.report_type.includes('keyword')).length > 0 ? 'Yes' : 'No'}
+                           </span>
+                         </div>
+                         <div className="flex justify-between">
+                           <span className="text-gray-600">Backlink Data:</span>
+                           <span className="font-medium">
+                             {projectData.reports.filter(r => r.report_type.includes('backlink')).length > 0 ? 'Yes' : 'No'}
+                           </span>
+                         </div>
+                         <div className="bg-blue-50 border border-blue-200 rounded p-3 mt-4">
+                           <p className="text-sm text-blue-800">
+                             ✨ SEMRush data detected! Enhanced competitive analysis available.
+                           </p>
+                         </div>
+                       </div>
+                     </div>
+                   ) : (
+                     <div>
+                       <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Issues</h3>
+                       <div className="space-y-2 max-h-48 overflow-y-auto">
+                         {analysis.issues?.slice(0, 5).map((issue, index) => (
+                           <div key={index} className="flex items-start gap-2 p-2 bg-gray-50 rounded">
+                             {getIssueIcon(issue.type)}
+                             <div className="min-w-0 flex-1">
+                               <div className="text-sm font-medium text-gray-900">{issue.title}</div>
+                               <div className="text-xs text-gray-600">{issue.description}</div>
+                             </div>
+                           </div>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+                 </div>
+               </div>
+             </div>
+           )}
 
                      {/* Tab Content - Comparison */}
            {activeTab === 'comparison' && results?.comparison && (
@@ -668,32 +698,34 @@ function App() {
                    </div>
 
                    {/* Data Preview */}
-                   {projectData.reports.some(r => r.file_data && Array.isArray(JSON.parse(r.file_data))) && (
-                     <div>
-                       <h4 className="font-medium text-gray-900 mb-3">Data Preview</h4>
-                       <div className="bg-gray-50 border rounded-md p-4 max-h-60 overflow-y-auto">
-                         {projectData.reports
-                           .filter(r => r.file_data && Array.isArray(JSON.parse(r.file_data)))
-                           .slice(0, 1)
-                           .map((report, index) => {
+                   <div>
+                     <h4 className="font-medium text-gray-900 mb-3">Data Status</h4>
+                     <div className="bg-gray-50 border rounded-md p-4">
+                       {projectData.reports.map((report, index) => {
+                         let dataInfo = 'No data parsed';
+                         try {
+                           if (report.file_data) {
                              const data = JSON.parse(report.file_data);
-                             return (
-                               <div key={index}>
-                                 <div className="text-sm font-medium mb-2">{report.filename} ({data.length} rows)</div>
-                                 {data.length > 0 && (
-                                   <div className="text-xs">
-                                     <div className="font-medium mb-1">Columns:</div>
-                                     <div className="text-gray-600">
-                                       {Object.keys(data[0]).join(', ')}
-                                     </div>
-                                   </div>
-                                 )}
-                               </div>
-                             );
-                           })}
-                       </div>
+                             if (Array.isArray(data)) {
+                               dataInfo = `${data.length} rows of CSV data`;
+                             } else if (data.type === 'pdf') {
+                               dataInfo = `PDF file stored (${(data.size / 1024).toFixed(1)}KB)`;
+                             } else {
+                               dataInfo = 'Data stored successfully';
+                             }
+                           }
+                         } catch (e) {
+                           dataInfo = 'Data parsing error';
+                         }
+                         
+                         return (
+                           <div key={index} className="text-sm mb-2">
+                             <strong>{report.filename}:</strong> {dataInfo}
+                           </div>
+                         );
+                       })}
                      </div>
-                   )}
+                   </div>
                  </div>
                )}
              </div>
