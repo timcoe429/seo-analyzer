@@ -742,7 +742,13 @@ function generateComparison(yourAnalysis, competitorAnalysis, targetKeyword, isP
   const yourCWVScore = calculateCWVScore(yourAnalysis.performance);
   const competitorCWVScore = calculateCWVScore(competitorAnalysis.performance);
   
-  if (competitorCWVScore > yourCWVScore + 10) {
+  // DEBUG: Always show CWV comparison for now
+  console.log('CWV Scores - You:', yourCWVScore, 'Competitor:', competitorCWVScore);
+  console.log('Your performance:', yourAnalysis.performance);
+  console.log('Competitor performance:', competitorAnalysis.performance);
+  
+  // Lower threshold and always analyze key factors
+  if (competitorCWVScore > yourCWVScore + 5 || true) { // Always analyze for now
     const performanceGaps = [];
     
     // HTTPS comparison
@@ -806,10 +812,116 @@ function generateComparison(yourAnalysis, competitorAnalysis, targetKeyword, isP
       priority: 'critical',
       action: `Core Web Vitals gap: Focus on ${performanceGaps.slice(0, 2).join(' and ')} - confirmed ranking factors`,
       category: 'Performance'
-    });
-  }
-  
-  // Only include content structure if there's a significant H2 gap AND they have less content
+         });
+   }
+   
+   // MANDATORY: Always analyze key ranking factors even if scores are close
+   
+   // Keyword optimization comparison (critical ranking factor)
+   if (targetKeyword && yourAnalysis.keywordAnalysis && competitorAnalysis.keywordAnalysis) {
+     const yourKA = yourAnalysis.keywordAnalysis;
+     const compKA = competitorAnalysis.keywordAnalysis;
+     
+     const keywordGaps = [];
+     
+     if (compKA.titleContainsKeyword && !yourKA.titleContainsKeyword) {
+       keywordGaps.push('Title keyword optimization');
+     }
+     if (compKA.h1ContainsKeyword && !yourKA.h1ContainsKeyword) {
+       keywordGaps.push('H1 keyword optimization');
+     }
+     if (parseFloat(compKA.exactDensity) > parseFloat(yourKA.exactDensity) + 0.5) {
+       keywordGaps.push('Keyword density optimization');
+     }
+     
+     if (keywordGaps.length > 0) {
+       gaps.push({
+         category: 'Keyword Optimization',
+         issue: `Competitor has better keyword optimization for "${targetKeyword}"`,
+         impact: 'high',
+         action: 'Improve keyword placement in critical SEO elements',
+         details: {
+           keywordGaps: keywordGaps,
+           yourKeywordData: {
+             titleKeyword: yourKA.titleContainsKeyword,
+             h1Keyword: yourKA.h1ContainsKeyword,
+             density: yourKA.exactDensity
+           },
+           competitorKeywordData: {
+             titleKeyword: compKA.titleContainsKeyword,
+             h1Keyword: compKA.h1ContainsKeyword,
+             density: compKA.exactDensity
+           }
+         }
+       });
+       
+       criticalActions.push({
+         priority: 'critical',
+         action: `Keyword gap: ${keywordGaps[0]} - they're ranking #1 for a reason`,
+         category: 'Keywords'
+       });
+     }
+   }
+   
+       // Schema markup comparison (rich snippets affect CTR)
+    const yourSchemaCount2 = yourAnalysis.schema.types.length;
+    const competitorSchemaCount2 = competitorAnalysis.schema.types.length;
+   
+       if (competitorSchemaCount2 > yourSchemaCount2) {
+      const missingSchema = competitorAnalysis.schema.types.filter(type => 
+        !yourAnalysis.schema.types.includes(type)
+      );
+      
+      gaps.push({
+        category: 'Rich Snippets',
+        issue: `Competitor has ${competitorSchemaCount2 - yourSchemaCount2} more schema types (better search appearance)`,
+       impact: 'high',
+       action: `Add missing schema markup for better search visibility`,
+       details: {
+         missingSchemaTypes: missingSchema,
+         competitorSchema: competitorAnalysis.schema.types,
+         yourSchema: yourAnalysis.schema.types,
+         recommendation: `Add ${missingSchema.slice(0, 3).join(', ')} schema markup`
+       }
+     });
+     
+     criticalActions.push({
+       priority: 'high',
+       action: `Schema gap: Add ${missingSchema.slice(0, 2).join(' and ')} schema - affects search appearance`,
+       category: 'Rich Snippets'
+     });
+   }
+   
+   // Technical SEO that actually matters
+   const technicalGaps = [];
+   
+   if (competitorAnalysis.performance.isHTTPS && !yourAnalysis.performance.isHTTPS) {
+     technicalGaps.push('HTTPS (confirmed ranking factor)');
+   }
+   
+   if (competitorAnalysis.technical.canonical && !yourAnalysis.technical.canonical) {
+     technicalGaps.push('Canonical URL (prevents duplicate content)');
+   }
+   
+   if (Object.keys(competitorAnalysis.technical.openGraph).some(key => competitorAnalysis.technical.openGraph[key]) && 
+       !Object.keys(yourAnalysis.technical.openGraph).some(key => yourAnalysis.technical.openGraph[key])) {
+     technicalGaps.push('Open Graph tags (improves social CTR)');
+   }
+   
+   if (technicalGaps.length > 0) {
+     gaps.push({
+       category: 'Technical SEO',
+       issue: `Missing critical technical elements that competitor has`,
+       impact: 'high',
+       action: 'Implement missing technical SEO elements',
+       details: {
+         missingElements: technicalGaps,
+         impact: 'These directly affect rankings or click-through rates'
+       }
+     });
+   }
+   
+   // Only include content structure if there's a significant H2 gap AND they have less content
   const competitorH2Count = competitorAnalysis.headings.h2?.count || 0;
   const yourH2Count = yourAnalysis.headings.h2?.count || 0;
   
