@@ -25,10 +25,10 @@ function App() {
   const [newProjectDomain, setNewProjectDomain] = useState('');
 
   // File upload state
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [reportType, setReportType] = useState('domain_overview');
-  const [isCompetitor, setIsCompetitor] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({});
+  const [dragOver, setDragOver] = useState(false);
 
   // Load projects on component mount
   useEffect(() => {
@@ -92,40 +92,103 @@ function App() {
     }
   };
 
-  const handleFileUpload = async () => {
-    if (!selectedFile || !currentProject) {
-      setError('Please select a file and project');
+  // Auto-detect report type from filename
+  const detectReportType = (filename) => {
+    const name = filename.toLowerCase();
+    if (name.includes('domain') || name.includes('overview')) return 'domain_overview';
+    if (name.includes('keyword') && name.includes('gap')) return 'keyword_gap';
+    if (name.includes('backlink') && name.includes('gap')) return 'backlink_gap';
+    if (name.includes('organic')) return 'organic_research';
+    return 'domain_overview'; // default
+  };
+
+  // Auto-detect if it's competitor data
+  const detectIsCompetitor = (filename) => {
+    const name = filename.toLowerCase();
+    return name.includes('competitor') || name.includes('comp_') || name.includes('vs_');
+  };
+
+  // Handle drag and drop
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    handleFilesSelected(files);
+  };
+
+  const handleFilesSelected = (files) => {
+    const validFiles = files.filter(file => 
+      file.name.toLowerCase().endsWith('.csv') || 
+      file.name.toLowerCase().endsWith('.pdf')
+    );
+
+    const fileObjects = validFiles.map(file => ({
+      file,
+      name: file.name,
+      reportType: detectReportType(file.name),
+      isCompetitor: detectIsCompetitor(file.name),
+      status: 'pending'
+    }));
+
+    setSelectedFiles(fileObjects);
+  };
+
+  const uploadAllFiles = async () => {
+    if (!currentProject || selectedFiles.length === 0) {
+      setError('Please select files and ensure a project is selected');
       return;
     }
 
     setUploadLoading(true);
     setError('');
+    
+    const results = [];
 
-    try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('reportType', reportType);
-      formData.append('isCompetitor', isCompetitor);
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const fileObj = selectedFiles[i];
+      setUploadProgress(prev => ({ ...prev, [fileObj.name]: 'uploading' }));
 
-      const response = await fetch(`/api/projects/${currentProject.id}/upload`, {
-        method: 'POST',
-        body: formData
-      });
+      try {
+        const formData = new FormData();
+        formData.append('file', fileObj.file);
+        formData.append('reportType', fileObj.reportType);
+        formData.append('isCompetitor', fileObj.isCompetitor);
 
-      if (response.ok) {
-        const result = await response.json();
-        setShowUploadModal(false);
-        setSelectedFile(null);
-        alert(`File uploaded successfully! Parsed ${result.parsedRows} rows.`);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Upload failed');
+        const response = await fetch(`/api/projects/${currentProject.id}/upload`, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          setUploadProgress(prev => ({ ...prev, [fileObj.name]: 'success' }));
+          results.push(`✅ ${fileObj.name}: ${result.parsedRows} rows (${result.fileType})`);
+        } else {
+          const errorData = await response.json();
+          setUploadProgress(prev => ({ ...prev, [fileObj.name]: 'error' }));
+          results.push(`❌ ${fileObj.name}: ${errorData.error}`);
+        }
+      } catch (error) {
+        setUploadProgress(prev => ({ ...prev, [fileObj.name]: 'error' }));
+        results.push(`❌ ${fileObj.name}: Upload failed`);
       }
-    } catch (error) {
-      setError('Failed to upload file');
-    } finally {
-      setUploadLoading(false);
     }
+
+    alert(`Upload Complete!\n\n${results.join('\n')}`);
+    setShowUploadModal(false);
+    setSelectedFiles([]);
+    setUploadProgress({});
+    setUploadLoading(false);
   };
 
   const analyzeURL = async () => {
@@ -569,12 +632,12 @@ function App() {
         </div>
       )}
 
-      {/* File Upload Modal */}
+            {/* Bulk File Upload Modal */}
       {showUploadModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Upload SEMRush Report</h3>
+              <h3 className="text-lg font-semibold">Upload SEMRush Reports</h3>
               <button
                 onClick={() => setShowUploadModal(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -584,57 +647,96 @@ function App() {
             </div>
             
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Report Type
-                </label>
-                <select
-                  value={reportType}
-                  onChange={(e) => setReportType(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="domain_overview">Domain Overview</option>
-                  <option value="keyword_gap">Keyword Gap Analysis</option>
-                  <option value="backlink_gap">Backlink Gap Analysis</option>
-                  <option value="organic_research">Organic Research</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  File (CSV or PDF)
-                </label>
-                                 <input
-                   type="file"
-                   accept=".csv,.pdf"
-                   onChange={(e) => setSelectedFile(e.target.files[0])}
-                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                 />
-              </div>
-              
-              <div className="flex items-center gap-2">
+              {/* Drag and Drop Zone */}
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                  dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+                }`}
+              >
+                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-lg font-medium text-gray-900 mb-2">
+                  Drag & Drop SEMRush Files Here
+                </p>
+                <p className="text-sm text-gray-600 mb-4">
+                  Or click to browse • Supports CSV and PDF files
+                </p>
                 <input
-                  type="checkbox"
-                  id="isCompetitorData"
-                  checked={isCompetitor}
-                  onChange={(e) => setIsCompetitor(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  type="file"
+                  multiple
+                  accept=".csv,.pdf"
+                  onChange={(e) => handleFilesSelected(Array.from(e.target.files))}
+                  className="hidden"
+                  id="fileInput"
                 />
-                <label htmlFor="isCompetitorData" className="text-sm text-gray-700">
-                  This is competitor data
+                <label
+                  htmlFor="fileInput"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 cursor-pointer inline-block"
+                >
+                  Browse Files
                 </label>
               </div>
+
+              {/* Auto-detection Info */}
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Smart Detection:</strong> Report types and competitor data are auto-detected from filenames. 
+                  Use keywords like "domain", "keyword-gap", "backlink-gap", "organic", "competitor", "comp_", or "vs_" in your filenames.
+                </p>
+              </div>
+
+              {/* Selected Files List */}
+              {selectedFiles.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-medium text-gray-900">Selected Files ({selectedFiles.length})</h4>
+                  <div className="max-h-40 overflow-y-auto space-y-2">
+                    {selectedFiles.map((fileObj, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                        <div className="flex-1">
+                          <div className="font-medium text-sm">{fileObj.name}</div>
+                          <div className="text-xs text-gray-600">
+                            {fileObj.reportType.replace('_', ' ')} • {fileObj.isCompetitor ? 'Competitor' : 'Main Domain'}
+                          </div>
+                        </div>
+                        <div className="ml-4">
+                          {uploadProgress[fileObj.name] === 'uploading' && (
+                            <div className="text-xs text-blue-600">Uploading...</div>
+                          )}
+                          {uploadProgress[fileObj.name] === 'success' && (
+                            <CheckCircle className="w-4 h-4 text-green-500" />
+                          )}
+                          {uploadProgress[fileObj.name] === 'error' && (
+                            <XCircle className="w-4 h-4 text-red-500" />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+                  {error}
+                </div>
+              )}
               
               <div className="flex gap-3 pt-4">
-                                 <button
-                   onClick={handleFileUpload}
-                   disabled={uploadLoading || !selectedFile}
-                   className="flex-1 bg-green-600 text-white py-2 rounded-md hover:bg-green-700 disabled:bg-green-400"
-                 >
-                  {uploadLoading ? 'Uploading...' : 'Upload'}
+                <button
+                  onClick={uploadAllFiles}
+                  disabled={uploadLoading || selectedFiles.length === 0}
+                  className="flex-1 bg-green-600 text-white py-2 rounded-md hover:bg-green-700 disabled:bg-green-400"
+                >
+                  {uploadLoading ? 'Uploading Files...' : `Upload ${selectedFiles.length} File${selectedFiles.length !== 1 ? 's' : ''}`}
                 </button>
                 <button
-                  onClick={() => setShowUploadModal(false)}
+                  onClick={() => {
+                    setShowUploadModal(false);
+                    setSelectedFiles([]);
+                    setUploadProgress({});
+                  }}
                   className="flex-1 bg-gray-300 text-gray-700 py-2 rounded-md hover:bg-gray-400"
                 >
                   Cancel

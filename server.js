@@ -1283,6 +1283,15 @@ app.post('/api/projects/:id/upload', upload.single('file'), async (req, res) => 
         console.error('CSV parsing error:', parseError);
         return res.status(400).json({ error: 'Failed to parse CSV file' });
       }
+    } else if (filename.toLowerCase().endsWith('.pdf')) {
+      // For PDFs, we store the raw file for now
+      // TODO: Add PDF text extraction in the future
+      parsedData = { 
+        type: 'pdf', 
+        filename: filename,
+        size: fileBuffer.length,
+        note: 'PDF stored as binary - text extraction coming soon'
+      };
     }
 
     // Store file in database
@@ -1303,7 +1312,8 @@ app.post('/api/projects/:id/upload', upload.single('file'), async (req, res) => 
     res.json({
       message: 'File uploaded successfully',
       report: result.rows[0],
-      parsedRows: parsedData ? parsedData.length : 0
+      parsedRows: parsedData ? (Array.isArray(parsedData) ? parsedData.length : 1) : 0,
+      fileType: filename.toLowerCase().endsWith('.pdf') ? 'PDF' : 'CSV'
     });
 
   } catch (error) {
