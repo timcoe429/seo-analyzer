@@ -103,8 +103,15 @@ function App() {
   };
 
   // Auto-detect if it's competitor data
-  const detectIsCompetitor = (filename) => {
+  const detectIsCompetitor = (filename, reportType) => {
     const name = filename.toLowerCase();
+    
+    // Gap analysis reports contain both your domain AND competitors in one file
+    if (reportType === 'keyword_gap' || reportType === 'backlink_gap') {
+      return false; // These are "main domain" files that include competitor data
+    }
+    
+    // Only mark as competitor if it's specifically a competitor-only report
     return name.includes('competitor') || name.includes('comp_') || name.includes('vs_');
   };
 
@@ -132,13 +139,16 @@ function App() {
       file.name.toLowerCase().endsWith('.pdf')
     );
 
-    const fileObjects = validFiles.map(file => ({
-      file,
-      name: file.name,
-      reportType: detectReportType(file.name),
-      isCompetitor: detectIsCompetitor(file.name),
-      status: 'pending'
-    }));
+    const fileObjects = validFiles.map(file => {
+      const reportType = detectReportType(file.name);
+      return {
+        file,
+        name: file.name,
+        reportType,
+        isCompetitor: detectIsCompetitor(file.name, reportType),
+        status: 'pending'
+      };
+    });
 
     setSelectedFiles(fileObjects);
   };
@@ -682,8 +692,10 @@ function App() {
               {/* Auto-detection Info */}
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
                 <p className="text-sm text-blue-800">
-                  <strong>Smart Detection:</strong> Report types and competitor data are auto-detected from filenames. 
-                  Use keywords like "domain", "keyword-gap", "backlink-gap", "organic", "competitor", "comp_", or "vs_" in your filenames.
+                  <strong>Smart Detection:</strong> Report types are auto-detected from filenames. 
+                  <br />• <strong>Gap Reports</strong> (keyword-gap, backlink-gap) automatically include both your domain + competitors
+                  <br />• <strong>Single Domain Reports</strong> marked as "competitor" only if filename contains "competitor", "comp_", or "vs_"
+                  <br />• Use keywords: "domain", "keyword-gap", "backlink-gap", "organic" for report types
                 </p>
               </div>
 
