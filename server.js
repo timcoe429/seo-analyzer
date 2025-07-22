@@ -70,6 +70,21 @@ app.post('/api/analyze', async (req, res) => {
   }
 });
 
+// Function to calculate basic readability score (Flesch Reading Ease approximation)
+function calculateReadabilityScore(text) {
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
+  const words = text.split(/\s+/).filter(w => w.trim().length > 0).length;
+  const syllables = text.toLowerCase().split(/[aeiou]+/).length - 1;
+  
+  if (sentences === 0 || words === 0) return 0;
+  
+  const avgSentenceLength = words / sentences;
+  const avgSyllablesPerWord = syllables / words;
+  
+  const score = 206.835 - (1.015 * avgSentenceLength) - (84.6 * avgSyllablesPerWord);
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
 // Function to perform comprehensive SEO analysis
 function performSEOAnalysis($, url, targetKeyword, isPillarPost = false) {
   // Comprehensive SEO Analysis
@@ -157,20 +172,7 @@ function performSEOAnalysis($, url, targetKeyword, isPillarPost = false) {
     schema: {}
   };
 
-  // Function to calculate basic readability score (Flesch Reading Ease approximation)
-  function calculateReadabilityScore(text) {
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
-    const words = text.split(/\s+/).filter(w => w.trim().length > 0).length;
-    const syllables = text.toLowerCase().split(/[aeiou]+/).length - 1;
-    
-    if (sentences === 0 || words === 0) return 0;
-    
-    const avgSentenceLength = words / sentences;
-    const avgSyllablesPerWord = syllables / words;
-    
-    const score = 206.835 - (1.015 * avgSentenceLength) - (84.6 * avgSyllablesPerWord);
-    return Math.max(0, Math.min(100, Math.round(score)));
-  }
+
 
   // Enhanced Schema Markup Analysis
   const schemaTypes = [];

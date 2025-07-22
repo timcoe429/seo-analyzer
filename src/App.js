@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, AlertCircle, CheckCircle, XCircle, ExternalLink, Copy, Users, Target, FileText } from 'lucide-react';
+import { Search, AlertCircle, CheckCircle, XCircle, ExternalLink, Copy, Users, Target, File } from 'lucide-react';
 import './App.css';
 
 function App() {
@@ -42,6 +42,13 @@ function App() {
       }
 
       const data = await response.json();
+      
+      // Check if the response has an error
+      if (data.error) {
+        setError(data.error);
+        return;
+      }
+      
       setResults(data);
       
       // If there's competitor data, switch to comparison tab
@@ -98,7 +105,6 @@ function App() {
   };
 
   const analysis = results?.analysis;
-  const competitor = results?.competitor;
   const comparison = results?.comparison;
 
   return (
@@ -229,8 +235,8 @@ function App() {
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    AI Report
+                                         <File className="w-4 h-4" />
+                     AI Report
                   </div>
                 </button>
               )}
@@ -272,7 +278,7 @@ function App() {
               <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
                 <h2 className="text-xl font-semibold mb-4">Heading Structure</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
-                  {Object.entries(analysis.headings).map(([tag, data]) => (
+                                     {Object.entries(analysis.headings || {}).map(([tag, data]) => (
                     <div key={tag} className="text-center">
                       <div className="text-2xl font-bold text-gray-900">{data.count}</div>
                       <div className="text-sm text-gray-600 uppercase">{tag}</div>
@@ -459,8 +465,8 @@ function App() {
               {comparison.criticalActions.length > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-6 shadow-sm">
                   <h3 className="text-lg font-semibold mb-4 text-red-800">🚨 Critical Actions Required</h3>
-                  <div className="space-y-3">
-                    {comparison.criticalActions.map((action, index) => (
+                                   <div className="space-y-3">
+                   {(comparison.criticalActions || []).map((action, index) => (
                       <div key={index} className="bg-white p-4 rounded-md border border-red-200">
                         <div className="font-medium text-red-800">{action.category}</div>
                         <div className="text-sm text-red-700">{action.action}</div>
@@ -473,8 +479,8 @@ function App() {
               {/* All Gaps */}
               <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
                 <h3 className="text-lg font-semibold mb-4">Competitive Gaps</h3>
-                <div className="space-y-3">
-                  {comparison.gaps.map((gap, index) => (
+                                 <div className="space-y-3">
+                   {(comparison.gaps || []).map((gap, index) => (
                     <div key={index} className="p-4 border border-gray-200 rounded-md">
                       <div className="flex items-center justify-between mb-2">
                         <div className="font-medium text-gray-900">{gap.category}</div>
@@ -493,8 +499,8 @@ function App() {
               {comparison.advantages.length > 0 && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-6 shadow-sm">
                   <h3 className="text-lg font-semibold mb-4 text-green-800">✅ Your Advantages</h3>
-                  <div className="space-y-3">
-                    {comparison.advantages.map((advantage, index) => (
+                                     <div className="space-y-3">
+                     {(comparison.advantages || []).map((advantage, index) => (
                       <div key={index} className="bg-white p-4 rounded-md border border-green-200">
                         <div className="font-medium text-green-800">{advantage.category}</div>
                         <div className="text-sm text-green-700">{advantage.advantage}</div>
@@ -512,10 +518,10 @@ function App() {
             <div className="space-y-6">
               <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold flex items-center gap-2">
-                    <FileText className="w-5 h-5" />
-                    AI-Ready Report
-                  </h2>
+                                     <h2 className="text-xl font-semibold flex items-center gap-2">
+                     <File className="w-5 h-5" />
+                     AI-Ready Report
+                   </h2>
                   <button
                     onClick={copyAIReport}
                     className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
