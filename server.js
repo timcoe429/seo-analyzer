@@ -25,6 +25,70 @@ let analysisData = {
   uploadedFiles: []
 };
 
+// Phase A: Data Discovery Endpoint - Just show raw file structure
+app.post('/api/discover-data', upload.single('file'), async (req, res) => {
+  try {
+    const file = req.file;
+    
+    if (!file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    console.log(`\n=== PHASE A DATA DISCOVERY ===`);
+    console.log(`File: ${file.originalname}`);
+    console.log(`Size: ${file.size} bytes`);
+    console.log(`Type: ${file.mimetype}`);
+
+    let result = {
+      fileName: file.originalname,
+      fileSize: file.size,
+      fileType: file.mimetype,
+      isCSV: file.originalname.toLowerCase().endsWith('.csv'),
+      isPDF: file.originalname.toLowerCase().endsWith('.pdf')
+    };
+
+    if (file.originalname.toLowerCase().endsWith('.csv')) {
+      // Parse CSV and show structure
+      const parsedData = parseCSV(file.buffer);
+      console.log(`Parsed ${parsedData.length} rows`);
+      
+      if (parsedData.length > 0) {
+        console.log('Column names:', Object.keys(parsedData[0]));
+        console.log('First row data:', parsedData[0]);
+        
+        result.totalRows = parsedData.length;
+        result.columnNames = Object.keys(parsedData[0]);
+        result.sampleRows = parsedData.slice(0, 5); // First 5 rows
+        result.allColumns = result.columnNames.map(col => ({
+          name: col,
+          sampleValues: parsedData.slice(0, 5).map(row => row[col]).filter(val => val !== undefined && val !== '')
+        }));
+      } else {
+        result.error = 'No data found in CSV file';
+      }
+    } else if (file.originalname.toLowerCase().endsWith('.pdf')) {
+      result.message = 'PDF detected - content parsing not implemented yet';
+      result.base64Preview = file.buffer.toString('base64').substring(0, 100) + '...';
+    } else {
+      result.error = 'Unsupported file type. Please upload CSV or PDF files.';
+    }
+
+    console.log('Discovery result:', {
+      columns: result.columnNames?.length || 0,
+      rows: result.totalRows || 0,
+      fileType: result.isCSV ? 'CSV' : result.isPDF ? 'PDF' : 'Unknown'
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Data discovery error:', error);
+    res.status(500).json({ 
+      error: 'Failed to process file: ' + error.message,
+      details: error.stack
+    });
+  }
+});
+
 // File upload endpoint
 app.post('/api/upload-semrush', upload.single('file'), async (req, res) => {
   try {
