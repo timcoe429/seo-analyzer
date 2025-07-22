@@ -3,9 +3,20 @@ const path = require('path');
 const cors = require('cors');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const multer = require('multer');
+const csv = require('csv-parser');
+const { query } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Configure multer for file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
+});
 
 // Middleware
 app.use(cors());
@@ -1152,6 +1163,209 @@ Please provide specific, actionable advice and code examples where applicable.
 
   return report;
 }
+
+// Project management endpoints
+app.get('/api/projects', async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM projects ORDER BY updated_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching projects:', error);
+    res.status(500).json({ error: 'Failed to fetch projects' });
+  }
+});
+
+app.post('/api/projects', async (req, res) => {
+  try {
+    const { name, domain } = req.body;
+    if (!name || !domain) {
+      return res.status(400).json({ error: 'Project name and domain are required' });
+    }
+
+    const result = await query(
+      'INSERT INTO projects (name, domain) VALUES ($1, $2) RETURNING *',
+      [name, domain]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating project:', error);
+    res.status(500).json({ error: 'Failed to create project' });
+  }
+});
+
+app.get('/api/projects/:id', async (req, res) => {
+  try {
+    const projectId = req.params.id;
+    
+    // Get project details
+    const projectResult = await query('SELECT * FROM projects WHERE id = $1', [projectId]);
+    if (projectResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Get SEMrush reports
+    const reportsResult = await query(
+      'SELECT * FROM semrush_reports WHERE project_id = $1 ORDER BY created_at DESC',
+      [projectId]
+    );
+
+    // Get analysis results
+    const analysisResult = await query(
+      'SELECT * FROM analysis_results WHERE project_id = $1 ORDER BY created_at DESC',
+      [projectId]
+    );
+
+    res.json({
+      project: projectResult.rows[0],
+      reports: reportsResult.rows,
+      analyses: analysisResult.rows
+    });
+  } catch (error) {
+    console.error('Error fetching project details:', error);
+    res.status(500).json({ error: 'Failed to fetch project details' });
+  }
+});
+
+// File upload endpoint
+app.post('/api/projects/:id/upload', upload.single('file'), async (req, res) => {
+  try {
+    const projectId = req.params.id;
+    const { reportType, isCompetitor } = req.body;
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const filename = req.file.originalname;
+    const fileBuffer = req.file.buffer;
+    
+    let parsedData = null;
+
+    // Parse CSV files
+    if (filename.toLowerCase().endsWith('.csv')) {
+      try {
+        const csvData = [];
+        const stream = require('stream');
+        const bufferStream = new stream.PassThrough();
+        bufferStream.end(fileBuffer);
+
+        await new Promise((resolve, reject) => {
+          bufferStream
+            .pipe(csv())
+            .on('data', (row) => csvData.push(row))
+            .on('end', resolve)
+            .on('error', reject);
+        });
+
+        parsedData = csvData;
+      } catch (parseError) {
+        console.error('CSV parsing error:', parseError);
+        return res.status(400).json({ error: 'Failed to parse CSV file' });
+      }
+    }
+
+    // Store file in database
+    const result = await query(
+      `INSERT INTO semrush_reports 
+       (project_id, filename, report_type, is_competitor, file_data, original_file) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [
+        projectId,
+        filename,
+        reportType || 'unknown',
+        isCompetitor === 'true',
+        JSON.stringify(parsedData),
+        fileBuffer
+      ]
+    );
+
+    res.json({
+      message: 'File uploaded successfully',
+      report: result.rows[0],
+      parsedRows: parsedData ? parsedData.length : 0
+    });
+
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    res.status(500).json({ error: 'Failed to upload file' });
+  }
+});
+
+// Enhanced analyze endpoint with project storage
+app.post('/api/projects/:id/analyze', async (req, res) => {
+  try {
+    const projectId = req.params.id;
+    const { url, targetKeyword, competitorUrl, isPillarPost } = req.body;
+
+    if (!url || !targetKeyword) {
+      return res.status(400).json({ error: 'URL and target keyword are required' });
+    }
+
+    // Perform analysis (reuse existing logic)
+    const response = await axios.get(url, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+
+    const $ = cheerio.load(response.data);
+    const mainAnalysis = performSEOAnalysis($, url, targetKeyword, isPillarPost);
+
+    let competitorAnalysis = null;
+    let comparison = null;
+    let competitiveScore = null;
+
+    if (competitorUrl) {
+      try {
+        const competitorResponse = await axios.get(competitorUrl, {
+          timeout: 10000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          }
+        });
+        const competitor$ = cheerio.load(competitorResponse.data);
+        competitorAnalysis = performSEOAnalysis(competitor$, competitorUrl, targetKeyword, isPillarPost);
+        
+        comparison = performCompetitorComparison(mainAnalysis, competitorAnalysis);
+        competitiveScore = comparison.competitiveScore;
+      } catch (compError) {
+        console.error('Competitor analysis failed:', compError.message);
+      }
+    }
+
+    const aiReport = generateAIReport(mainAnalysis, competitorAnalysis, comparison, targetKeyword, isPillarPost);
+
+    const analysisData = {
+      analysis: mainAnalysis,
+      competitor: competitorAnalysis,
+      comparison: comparison,
+      aiReport: aiReport
+    };
+
+    // Store analysis in database
+    await query(
+      `INSERT INTO analysis_results 
+       (project_id, url, target_keyword, competitor_url, is_pillar_post, analysis_data, competitive_score) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        projectId,
+        url,
+        targetKeyword,
+        competitorUrl,
+        isPillarPost,
+        JSON.stringify(analysisData),
+        competitiveScore
+      ]
+    );
+
+    res.json(analysisData);
+
+  } catch (error) {
+    console.error('Analysis error:', error);
+    res.status(500).json({ error: 'Analysis failed: ' + error.message });
+  }
+});
 
  // Serve React app for all other routes
 app.get('*', (req, res) => {
